@@ -1,0 +1,132 @@
+// Este esquema es un espejo 1:1 de las entidades de dominio ya existentes
+// (User, Store, Product, Order). No contiene lógica de negocio: eso vive
+// en las entidades de src/domain — Prisma es solo el detalle de persistencia.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  VENDEDOR
+  ADMIN
+}
+
+enum PlanType {
+  FREE
+  PREMIUM
+}
+
+enum Currency {
+  USD
+  EUR
+  VES
+}
+
+enum OrderStatus {
+  PENDIENTE
+  CONFIRMADO
+  ENTREGADO
+  CANCELADO
+}
+
+model PremiumCode {
+  id             String    @id @default(uuid())
+  code           String    @unique
+  durationDays   Int       @default(30)
+  used           Boolean   @default(false)
+  usedByStoreId  String?
+  createdAt      DateTime  @default(now())
+  usedAt         DateTime?
+
+  @@map("premium_codes")
+}
+
+model StoreVisit {
+  id        String   @id @default(uuid())
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  visitedAt DateTime @default(now())
+
+  @@index([storeId, visitedAt])
+  @@map("store_visits")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  storeName    String
+  role         UserRole @default(VENDEDOR)
+  createdAt    DateTime @default(now())
+
+  store Store?
+
+  @@map("users")
+}
+
+model Store {
+  id                      String    @id @default(uuid())
+  ownerId                 String    @unique
+  owner                   User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name                    String
+  slug                    String    @unique
+  logoUrl                 String?
+  whatsappPhone           String
+  whatsappMessageTemplate String    @db.Text
+  instagramUrl            String?
+  tiktokUrl               String?
+  testimonialUrls         String[]  @default([])
+  currency                Currency  @default(USD)
+  plan                    PlanType  @default(FREE)
+  planExpiresAt           DateTime?
+  productLimit            Int       @default(20)
+  hasUsedTrial            Boolean   @default(false)
+  templateId              String    @default("clasica")
+  rif                     String?
+  isVerified              Boolean   @default(false)
+  createdAt               DateTime  @default(now())
+
+  products Product[]
+  orders   Order[]
+  visits   StoreVisit[]
+
+  @@index([slug])
+  @@map("stores")
+}
+
+model Product {
+  id        String   @id @default(uuid())
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name      String
+  category  String
+  price     Decimal  @db.Decimal(10, 2)
+  imageUrl  String
+  gifUrl    String?
+  available Boolean  @default(true)
+  isFeatured Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId])
+  @@map("products")
+}
+
+model Order {
+  id           String      @id @default(uuid())
+  storeId      String
+  store        Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  items        Json        // OrderItem[] serializado, ver domain/entities/Order.ts
+  total        Decimal     @db.Decimal(10, 2)
+  status       OrderStatus @default(PENDIENTE)
+  buyerContact String?
+  createdAt    DateTime    @default(now())
+
+  @@index([storeId])
+  @@map("orders")
+}
