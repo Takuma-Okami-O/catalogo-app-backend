@@ -177,9 +177,10 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
   .product-card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border-color); overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
   .img-container { position: relative; width: 100%; padding-top: 110%; background: #f2efe9; overflow: hidden; }
   .img-container img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-  .tag-stock { position: absolute; top: 10px; left: 10px; background: var(--card-bg); backdrop-filter: blur(4px); color: var(--text-main); font-size: 0.6rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .badge-stack { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; pointer-events: none; }
+  .tag-stock { background: var(--card-bg); backdrop-filter: blur(4px); color: var(--text-main); font-size: 0.6rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
   .tag-stock.out { background: var(--primary); color: var(--on-primary); }
-  .tag-featured { position: absolute; top: 10px; right: 10px; background: var(--accent-gold); color: var(--on-accent); font-size: 0.6rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .tag-featured { background: var(--accent-gold); color: var(--on-accent); font-size: 0.6rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
   .product-card.featured { border: 1.5px solid var(--accent-gold); }
   .product-info { padding: 12px; }
   .product-cat { font-size: 0.6rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; letter-spacing: 1px; margin-bottom: 2px; }
@@ -312,8 +313,10 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
           <div>
             <div class="img-container" onclick="abrirLightbox('\${prod.id}')">
               <img src="\${prod.imagen}" alt="\${prod.nombre}" loading="lazy">
-              <span class="tag-stock \${!prod.disponible ? 'out' : ''}">\${prod.disponible ? 'Disponible' : 'Agotado'}</span>
-              \${prod.destacado ? '<span class="tag-featured">⭐ Destacado</span>' : ''}
+              <div class="badge-stack">
+                <span class="tag-stock \${!prod.disponible ? 'out' : ''}">\${prod.disponible ? 'Disponible' : 'Agotado'}</span>
+                \${prod.destacado ? '<span class="tag-featured">⭐ Destacado</span>' : ''}
+              </div>
             </div>
             <div class="product-info">
               <span class="product-cat">\${prod.categoria}</span>
