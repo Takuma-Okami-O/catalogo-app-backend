@@ -123,6 +123,9 @@ export class PrismaProductRepository implements IProductRepository {
       gifUrl: product.gifUrl,
       available: product.available,
       isFeatured: product.isFeatured,
+      stockCount: product.stockCount,
+      saleDiscountPercent: product.saleDiscountPercent,
+      saleEndsAt: product.saleEndsAt,
     };
     await this.prisma.product.upsert({
       where: { id: product.id },
@@ -147,6 +150,9 @@ export class PrismaProductRepository implements IProductRepository {
       gifUrl: row.gifUrl,
       available: row.available,
       isFeatured: row.isFeatured ?? false,
+      stockCount: row.stockCount ?? null,
+      saleDiscountPercent: row.saleDiscountPercent ?? null,
+      saleEndsAt: row.saleEndsAt ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

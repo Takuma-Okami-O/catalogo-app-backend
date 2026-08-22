@@ -107,6 +107,11 @@ interface ProductView {
   gifUrl: string | null;
   available: boolean;
   isFeatured: boolean;
+  stockCount: number | null;
+  isEffectivelyAvailable: boolean;
+  saleDiscountPercent: number | null;
+  saleEndsAt: Date | string | null;
+  createdAt: Date | string;
 }
 
 function renderCatalogPage(store: StoreView, products: ProductView[], slug: string): string {
@@ -127,15 +132,24 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
     .join("");
 
   const productsJson = JSON.stringify(
-    products.map((p) => ({
-      id: p.id,
-      nombre: p.name,
-      categoria: p.category,
-      precio: p.price,
-      disponible: p.available,
-      imagen: p.gifUrl ? withAnimatedGifDelivery(p.gifUrl) : p.imageUrl,
-      destacado: p.isFeatured,
-    }))
+    products.map((p) => {
+      const createdAtMs = new Date(p.createdAt).getTime();
+      const isNew = Date.now() - createdAtMs < 7 * 24 * 60 * 60 * 1000; // 7 días
+      return {
+        id: p.id,
+        nombre: p.name,
+        categoria: p.category,
+        precio: p.price,
+        disponible: p.isEffectivelyAvailable,
+        imagen: p.gifUrl ? withAnimatedGifDelivery(p.gifUrl) : p.imageUrl,
+        destacado: p.isFeatured,
+        stock: p.stockCount,
+        nuevo: isNew,
+        creadoEn: createdAtMs,
+        ofertaPct: p.saleDiscountPercent,
+        ofertaFin: p.saleEndsAt ? new Date(p.saleEndsAt).getTime() : null,
+      };
+    })
   );
 
   const theme = getCatalogTheme(store.templateId);
@@ -181,6 +195,16 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
   .tag-stock { background: var(--card-bg); backdrop-filter: blur(4px); color: var(--text-main); font-size: 0.6rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
   .tag-stock.out { background: var(--primary); color: var(--on-primary); }
   .tag-featured { background: var(--accent-gold); color: var(--on-accent); font-size: 0.6rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .tag-new { background: #2563eb; color: #ffffff; font-size: 0.6rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .tag-low-stock { background: #dc2626; color: #ffffff; font-size: 0.6rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .tag-sale { background: #dc2626; color: #ffffff; font-size: 0.6rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .fav-btn { position: absolute; bottom: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%; background: var(--card-bg); border: none; font-size: 1rem; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+  .sale-price-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .price-original { font-size: 0.75rem; color: var(--text-muted); text-decoration: line-through; }
+  .sale-countdown { font-size: 0.6rem; color: #dc2626; font-weight: 700; margin-top: 2px; }
+  .toolbar-row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .sort-select { flex-shrink: 0; background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 8px 10px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+  .cat-btn.fav-filter.active { background: #dc2626; border-color: #dc2626; color: #ffffff; }
   .product-card.featured { border: 1.5px solid var(--accent-gold); }
   .product-info { padding: 12px; }
   .product-cat { font-size: 0.6rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; letter-spacing: 1px; margin-bottom: 2px; }
@@ -252,8 +276,18 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
       <input type="text" id="searchInput" class="search-input" placeholder="Buscar productos..." oninput="filtrar()">
     </div>
 
+    <div class="toolbar-row">
+      <select class="sort-select" id="sortSelect" onchange="filtrar()">
+        <option value="relevancia">Ordenar: relevancia</option>
+        <option value="nuevo">Más nuevo primero</option>
+        <option value="precio_asc">Precio: menor a mayor</option>
+        <option value="precio_desc">Precio: mayor a menor</option>
+      </select>
+    </div>
+
     <div class="categories" id="catContainer">
       <button class="cat-btn active" onclick="filtrarCategoria('todas', this)">Todo</button>
+      <button class="cat-btn fav-filter" onclick="filtrarCategoria('__favoritos__', this)">❤️ Favoritos</button>
       ${categoryButtonsHtml}
     </div>
 
@@ -303,12 +337,49 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
     let categoriaSeleccionada = 'todas';
     let carrito = {};
 
+    // ---------- Favoritos (sin cuenta, guardados solo en este navegador) ----------
+    const FAV_KEY = 'catalogo_favoritos_' + SLUG;
+    function obtenerFavoritos() {
+      try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch (e) { return []; }
+    }
+    function esFavorito(id) { return obtenerFavoritos().includes(id); }
+    function alternarFavorito(id, event) {
+      if (event) event.stopPropagation();
+      let favs = obtenerFavoritos();
+      if (favs.includes(id)) favs = favs.filter(f => f !== id);
+      else favs.push(id);
+      localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+      filtrar();
+    }
+
+    function calcularOferta(prod) {
+      if (!prod.ofertaPct || !prod.ofertaFin || prod.ofertaFin <= Date.now()) return null;
+      const precioFinal = prod.precio * (1 - prod.ofertaPct / 100);
+      return { precioFinal, msRestante: prod.ofertaFin - Date.now() };
+    }
+
+    function formatearTiempoRestante(ms) {
+      if (ms <= 0) return 'Termina en 0m';
+      const totalMin = Math.floor(ms / 60000);
+      const horas = Math.floor(totalMin / 60);
+      const min = totalMin % 60;
+      if (horas > 0) return \`Termina en \${horas}h \${min}m\`;
+      return \`Termina en \${min}m\`;
+    }
+
     function renderizar(lista) {
       const grid = document.getElementById('grid');
       grid.innerHTML = '';
       lista.forEach(prod => {
         const card = document.createElement('div');
         card.className = 'product-card' + (prod.destacado ? ' featured' : '');
+        const oferta = calcularOferta(prod);
+        const stockBajo = typeof prod.stock === 'number' && prod.stock > 0 && prod.stock <= 5;
+        const favActivo = esFavorito(prod.id);
+        const precioHtml = oferta
+          ? \`<div class="sale-price-row"><span class="product-price">$\${oferta.precioFinal.toFixed(2)}</span><span class="price-original">$\${prod.precio.toFixed(2)}</span></div>
+             <p class="sale-countdown" data-ofertafin="\${prod.ofertaFin}">\${formatearTiempoRestante(oferta.msRestante)}</p>\`
+          : \`<p class="product-price">$\${prod.precio.toFixed(2)}</p>\`;
         card.innerHTML = \`
           <div>
             <div class="img-container" onclick="abrirLightbox('\${prod.id}')">
@@ -316,12 +387,16 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
               <div class="badge-stack">
                 <span class="tag-stock \${!prod.disponible ? 'out' : ''}">\${prod.disponible ? 'Disponible' : 'Agotado'}</span>
                 \${prod.destacado ? '<span class="tag-featured">⭐ Destacado</span>' : ''}
+                \${prod.nuevo ? '<span class="tag-new">🆕 Nuevo</span>' : ''}
+                \${oferta ? '<span class="tag-sale">🔥 Oferta</span>' : ''}
+                \${stockBajo ? \`<span class="tag-low-stock">¡Quedan \${prod.stock}!</span>\` : ''}
               </div>
+              <button class="fav-btn" onclick="alternarFavorito('\${prod.id}', event)">\${favActivo ? '❤️' : '🤍'}</button>
             </div>
             <div class="product-info">
               <span class="product-cat">\${prod.categoria}</span>
               <h3 class="product-title">\${prod.nombre}</h3>
-              <p class="product-price">$\${prod.precio.toFixed(2)}</p>
+              \${precioHtml}
             </div>
           </div>
           \${prod.disponible ? \`
@@ -331,6 +406,20 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
         grid.appendChild(card);
       });
     }
+
+    // Actualiza los contadores de oferta cada segundo sin recargar la página.
+    // Si alguna oferta ya venció mientras el comprador tenía la página abierta,
+    // se vuelve a renderizar la lista para que el precio regrese solo a la normal.
+    setInterval(() => {
+      let algunaVencio = false;
+      document.querySelectorAll('.sale-countdown').forEach(el => {
+        const fin = Number(el.dataset.ofertafin);
+        const restante = fin - Date.now();
+        if (restante <= 0) { algunaVencio = true; }
+        else { el.innerText = formatearTiempoRestante(restante); }
+      });
+      if (algunaVencio) filtrar();
+    }, 1000);
 
     function cambiarCantidad(id, delta) {
       if (!carrito[id]) { if (delta > 0) carrito[id] = 1; }
@@ -420,11 +509,24 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
 
     function filtrar() {
       const q = document.getElementById('searchInput').value.toLowerCase();
-      const res = productos.filter(p => {
+      let res = productos.filter(p => {
         const coincideTexto = p.nombre.toLowerCase().includes(q) || p.categoria.toLowerCase().includes(q);
+        if (categoriaSeleccionada === '__favoritos__') {
+          return coincideTexto && esFavorito(p.id);
+        }
         const coincideCat = categoriaSeleccionada === 'todas' || p.categoria === categoriaSeleccionada;
         return coincideTexto && coincideCat;
       });
+
+      const orden = document.getElementById('sortSelect').value;
+      if (orden === 'nuevo') {
+        res = [...res].sort((a, b) => b.creadoEn - a.creadoEn);
+      } else if (orden === 'precio_asc') {
+        res = [...res].sort((a, b) => a.precio - b.precio);
+      } else if (orden === 'precio_desc') {
+        res = [...res].sort((a, b) => b.precio - a.precio);
+      }
+
       renderizar(res);
     }
 

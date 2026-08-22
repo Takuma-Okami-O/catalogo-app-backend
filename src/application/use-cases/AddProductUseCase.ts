@@ -21,6 +21,7 @@ export interface AddProductInput {
   imageUrl: string;
   gifUrl?: string | null;
   isFeatured?: boolean;
+  stockCount?: number | null;
 }
 
 export class AddProductUseCase {
@@ -93,6 +94,9 @@ export class AddProductUseCase {
       gifUrl: input.gifUrl ?? null,
       available: true,
       isFeatured,
+      stockCount: input.stockCount ?? null,
+      saleDiscountPercent: null,
+      saleEndsAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

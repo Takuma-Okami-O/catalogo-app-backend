@@ -110,6 +110,9 @@ model Product {
   gifUrl    String?
   available Boolean  @default(true)
   isFeatured Boolean @default(false)
+  stockCount Int?
+  saleDiscountPercent Int?
+  saleEndsAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

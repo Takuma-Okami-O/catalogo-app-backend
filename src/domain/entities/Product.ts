@@ -8,6 +8,9 @@ export interface ProductProps {
   gifUrl: string | null;
   available: boolean;
   isFeatured: boolean; // Premium: se muestra primero en el catálogo público con insignia ⭐
+  stockCount: number | null; // null = no se rastrea (comportamiento clásico con "available")
+  saleDiscountPercent: number | null; // Premium: oferta relámpago, 1-90
+  saleEndsAt: Date | null; // Premium: hora en que termina la oferta relámpago
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +40,16 @@ export class Product {
     if (props.price < 0) {
       throw new Error("Product: el precio no puede ser negativo.");
     }
+    if (props.stockCount !== null && props.stockCount !== undefined && props.stockCount < 0) {
+      throw new Error("Product: el stock no puede ser negativo.");
+    }
+    if (
+      props.saleDiscountPercent !== null &&
+      props.saleDiscountPercent !== undefined &&
+      (props.saleDiscountPercent <= 0 || props.saleDiscountPercent >= 100)
+    ) {
+      throw new Error("Product: el descuento de la oferta debe estar entre 1 y 99.");
+    }
     if (!props.imageUrl) {
       throw new Error("Product: la imagen es obligatoria.");
     }
@@ -52,6 +65,25 @@ export class Product {
   get gifUrl() { return this.props.gifUrl; }
   get available() { return this.props.available; }
   get isFeatured() { return this.props.isFeatured; }
+  get stockCount() { return this.props.stockCount; }
+  get saleDiscountPercent() { return this.props.saleDiscountPercent; }
+  get saleEndsAt() { return this.props.saleEndsAt; }
+  get createdAt() { return this.props.createdAt; }
+
+  /** Disponibilidad real: si se rastrea stock, manda el número; si no, manda el switch manual. */
+  get isEffectivelyAvailable(): boolean {
+    if (this.props.stockCount !== null) return this.props.stockCount > 0;
+    return this.props.available;
+  }
+
+  /** true si la oferta relámpago sigue vigente en este momento. */
+  get hasActiveSale(): boolean {
+    return (
+      this.props.saleDiscountPercent !== null &&
+      this.props.saleEndsAt !== null &&
+      this.props.saleEndsAt.getTime() > Date.now()
+    );
+  }
 
   /** Solo Premium. El caso de uso valida el plan y el límite de destacados antes de llamar esto. */
   setFeatured(isFeatured: boolean): void {
@@ -71,12 +103,29 @@ export class Product {
     imageUrl?: string;
     gifUrl?: string | null;
     available?: boolean;
+    stockCount?: number | null;
   }): void {
     if (input.name !== undefined) this.props.name = input.name.trim();
     if (input.category !== undefined) this.props.category = Product.normalizeCategory(input.category);
     if (input.imageUrl !== undefined) this.props.imageUrl = input.imageUrl;
     if (input.gifUrl !== undefined) this.props.gifUrl = input.gifUrl;
     if (input.available !== undefined) this.props.available = input.available;
+    if (input.stockCount !== undefined) {
+      if (input.stockCount !== null && input.stockCount < 0) {
+        throw new Error("Product: el stock no puede ser negativo.");
+      }
+      this.props.stockCount = input.stockCount;
+    }
+    this.props.updatedAt = new Date();
+  }
+
+  /** Solo Premium. El caso de uso valida el plan antes de llamar esto. */
+  setFlashSale(input: { discountPercent: number | null; endsAt: Date | null }): void {
+    if (input.discountPercent !== null && (input.discountPercent <= 0 || input.discountPercent >= 100)) {
+      throw new Error("Product: el descuento de la oferta debe estar entre 1 y 99.");
+    }
+    this.props.saleDiscountPercent = input.discountPercent;
+    this.props.saleEndsAt = input.endsAt;
     this.props.updatedAt = new Date();
   }
 
@@ -91,6 +140,11 @@ export class Product {
       gifUrl: this.props.gifUrl,
       available: this.props.available,
       isFeatured: this.props.isFeatured,
+      stockCount: this.props.stockCount,
+      isEffectivelyAvailable: this.isEffectivelyAvailable,
+      saleDiscountPercent: this.hasActiveSale ? this.props.saleDiscountPercent : null,
+      saleEndsAt: this.hasActiveSale ? this.props.saleEndsAt : null,
+      createdAt: this.props.createdAt,
     };
   }
 }

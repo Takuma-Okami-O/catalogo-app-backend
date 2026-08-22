@@ -22,6 +22,10 @@ export interface UpdateProductInput {
   gifUrl?: string | null;
   available?: boolean;
   isFeatured?: boolean;
+  stockCount?: number | null;
+  /** Oferta relámpago (Premium). Envía ambos juntos; null en los dos = desactivar la oferta. */
+  saleDiscountPercent?: number | null;
+  saleEndsAt?: string | null;
 }
 
 export class UpdateProductUseCase {
@@ -75,12 +79,40 @@ export class UpdateProductUseCase {
       product.setFeatured(input.isFeatured);
     }
 
+    if (input.stockCount !== undefined) {
+      if (
+        input.stockCount !== null &&
+        (typeof input.stockCount !== "number" || Number.isNaN(input.stockCount) || input.stockCount < 0)
+      ) {
+        throw new ValidationError("El stock debe ser un número mayor o igual a 0, o vacío para no rastrearlo.");
+      }
+    }
+
+    if (input.saleDiscountPercent !== undefined || input.saleEndsAt !== undefined) {
+      if (store.plan !== "PREMIUM") {
+        throw new ForbiddenError(
+          "Las ofertas relámpago son una función exclusiva del plan Premium."
+        );
+      }
+      const discountPercent = input.saleDiscountPercent ?? null;
+      const endsAt = input.saleEndsAt ? new Date(input.saleEndsAt) : null;
+      if (discountPercent !== null && endsAt === null) {
+        throw new ValidationError("Debes indicar cuándo termina la oferta relámpago.");
+      }
+      if (discountPercent === null) {
+        product.setFlashSale({ discountPercent: null, endsAt: null });
+      } else {
+        product.setFlashSale({ discountPercent, endsAt });
+      }
+    }
+
     product.updateDetails({
       name: input.name,
       category: input.category,
       imageUrl: input.imageUrl,
       gifUrl: input.gifUrl,
       available: input.available,
+      stockCount: input.stockCount,
     });
 
     await this.productRepository.save(product);
