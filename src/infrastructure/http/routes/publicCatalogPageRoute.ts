@@ -2,7 +2,7 @@ import { Router } from "express";
 import { IProductRepository, IStoreRepository, IStoreVisitRepository } from "../../../domain/repositories/ICatalogRepositories";
 import { GetPublicCatalogUseCase } from "../../../application/use-cases/GetPublicCatalogUseCase";
 import { RecordStoreVisitUseCase } from "../../../application/use-cases/RecordStoreVisitUseCase";
-import { getCatalogTheme } from "./templates/catalogThemes";
+import { getCatalogTheme, CatalogTheme } from "./templates/catalogThemes";
 
 export function buildPublicCatalogPageRoute(
   storeRepository: IStoreRepository,
@@ -52,13 +52,34 @@ function renderTestimonialsSection(store: StoreView): string {
   const urls = store.testimonialUrls ?? [];
   if (urls.length === 0) return "";
   const imagesHtml = urls
-    .map((url) => `<img src="${escapeHtml(url)}" alt="Comprador satisfecho" loading="lazy" />`)
+    .map((url) => `<img src="${escapeHtml(url)}" alt="Comprador satisfecho" loading="lazy" onclick="abrirTestimonio('${escapeJs(url)}')" />`)
     .join("");
   return `
     <div class="social-card">
       <p class="social-card-title">Lo que dicen nuestros clientes</p>
       <div class="testimonials-scroll">${imagesHtml}</div>
     </div>`;
+}
+
+/**
+ * Decoración flotante sutil, solo para plantillas especiales (Halloween,
+ * Navidad) que definan `decorEmojis` — genera ~14 emojis con distinta
+ * posición/velocidad/tamaño, cayendo lento por toda la pantalla, sin
+ * bloquear ningún clic (pointer-events: none).
+ */
+function renderFestiveDecor(theme: CatalogTheme): string {
+  if (!theme.decorEmojis || theme.decorEmojis.length === 0) return "";
+  const spans = Array.from({ length: 14 })
+    .map((_, i) => {
+      const emoji = theme.decorEmojis![i % theme.decorEmojis!.length];
+      const left = Math.round((i * 137.5) % 100); // distribución pseudo-aleatoria pero determinista
+      const duration = 10 + (i % 5) * 3; // entre 10s y 22s
+      const delay = (i % 7) * 1.3;
+      const size = 1.1 + (i % 3) * 0.3;
+      return `<span style="left:${left}%; animation-duration:${duration}s; animation-delay:${delay}s; font-size:${size}rem;">${emoji}</span>`;
+    })
+    .join("");
+  return `<div class="festive-decor">${spans}</div>`;
 }
 
 function escapeHtml(text: string): string {
@@ -241,6 +262,19 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
   .lightbox-content img { width: 100%; height: 320px; object-fit: cover; }
   .lightbox-info { padding: 18px; }
   .lightbox-close { position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,0.9); border: none; font-size: 1rem; cursor: pointer; z-index: 2; }
+  .testimonial-lightbox { position: fixed; inset: 0; z-index: 410; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .testimonial-lightbox.open { display: flex; }
+  .testimonial-lightbox-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.92); }
+  .testimonial-lightbox-content { position: relative; max-width: 640px; width: 100%; max-height: 92vh; z-index: 1; display: flex; align-items: center; justify-content: center; }
+  .testimonial-lightbox-content img { max-width: 100%; max-height: 92vh; object-fit: contain; border-radius: 12px; }
+  .testimonial-lightbox-close { position: absolute; top: -6px; right: -6px; width: 36px; height: 36px; border-radius: 50%; background: #ffffff; color: #1a1a1a; border: none; font-size: 1rem; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+  .testimonials-scroll img { cursor: zoom-in; }
+  .festive-decor { position: fixed; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; }
+  .festive-decor span { position: absolute; top: -40px; font-size: 1.6rem; opacity: 0.55; animation: festive-fall linear infinite; }
+  @keyframes festive-fall {
+    0% { transform: translateY(-40px) rotate(0deg); }
+    100% { transform: translateY(110vh) rotate(360deg); }
+  }
   footer { text-align: center; margin-top: 40px; font-size: 0.7rem; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
   .social-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; text-align: center; }
   .social-card-title { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); margin-bottom: 12px; }
@@ -255,6 +289,7 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
 </style>
 </head>
 <body>
+${renderFestiveDecor(theme)}
   <header>
     <div class="header-content">
       <div class="brand-info">
@@ -328,6 +363,14 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
         <h3 class="product-title" style="font-size:1rem;margin:4px 0;" id="lightboxName"></h3>
         <p class="product-price" style="font-size:1.1rem;" id="lightboxPrice"></p>
       </div>
+    </div>
+  </div>
+
+  <div class="testimonial-lightbox" id="testimonialLightbox">
+    <div class="testimonial-lightbox-backdrop" onclick="cerrarTestimonio()"></div>
+    <div class="testimonial-lightbox-content">
+      <button class="testimonial-lightbox-close" onclick="cerrarTestimonio()">✕</button>
+      <img id="testimonialLightboxImg" src="" alt="Captura de comprador ampliada">
     </div>
   </div>
 
@@ -505,6 +548,15 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
     }
     function cerrarLightbox() {
       document.getElementById('lightbox').classList.remove('open');
+    }
+
+    function abrirTestimonio(url) {
+      document.getElementById('testimonialLightboxImg').src = url;
+      document.getElementById('testimonialLightbox').classList.add('open');
+    }
+
+    function cerrarTestimonio() {
+      document.getElementById('testimonialLightbox').classList.remove('open');
     }
 
     function filtrar() {
