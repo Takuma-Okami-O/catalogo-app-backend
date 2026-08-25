@@ -3,6 +3,10 @@ export interface CatalogTheme {
   cssVars: string; // contenido que va dentro de :root { ... }
   /** Solo temas especiales (Halloween, Navidad): emojis decorativos flotantes. */
   decorEmojis?: string[];
+  /** Gorrito navideño decorativo (puro CSS) encima de cada precio. */
+  priceHats?: boolean;
+  /** Trineo de Santa cruzando la pantalla de vez en cuando, sin bloquear clics. */
+  santaSleigh?: boolean;
 }
 
 /**
@@ -107,6 +111,17 @@ export const CATALOG_THEMES: Record<string, CatalogTheme> = {
       --text-main: #e9fbf1; --text-muted: #8fb5a3; --border-color: #1e3b2a;
       --whatsapp: #25D366; --danger: #f87171; --radius: 12px;
     `,
+  },
+  bosque_esmeralda_navidad: {
+    name: "Bosque Esmeralda · Navidad 🎄",
+    cssVars: `
+      --bg-color: #0d1f16; --card-bg: #14291d; --primary: #ffffff; --on-primary: #0d1f16; --accent-gold: #34d399; --on-accent: #0d1f16;
+      --text-main: #e9fbf1; --text-muted: #8fb5a3; --border-color: #1e3b2a;
+      --whatsapp: #25D366; --danger: #f87171; --radius: 12px;
+    `,
+    decorEmojis: ["❄️"],
+    priceHats: true,
+    santaSleigh: true,
   },
   oliva_natural: {
     name: "Oliva Natural",

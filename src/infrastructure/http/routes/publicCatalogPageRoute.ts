@@ -82,6 +82,12 @@ function renderFestiveDecor(theme: CatalogTheme): string {
   return `<div class="festive-decor">${spans}</div>`;
 }
 
+/** El trineo de Santa: solo aparece si el tema tiene `santaSleigh: true`. */
+function renderSantaSleigh(theme: CatalogTheme): string {
+  if (!theme.santaSleigh) return "";
+  return `<div class="santa-sleigh-lane"><span>🛷💨🦌🦌 🎅</span></div>`;
+}
+
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -275,6 +281,28 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
     0% { transform: translateY(-40px) rotate(0deg); }
     100% { transform: translateY(110vh) rotate(360deg); }
   }
+  /* Gorrito navideño decorativo encima de cada precio (puro CSS, sin depender de emojis) */
+  body.theme-santa-hats .product-price { position: relative; }
+  body.theme-santa-hats .product-price::before {
+    content: ''; position: absolute; top: -11px; left: -3px; width: 0; height: 0;
+    border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 12px solid #c0392b;
+    transform: rotate(-18deg); transform-origin: bottom left;
+  }
+  body.theme-santa-hats .product-price::after {
+    content: ''; position: absolute; top: -15px; left: -6px; width: 6px; height: 6px;
+    background: #fff; border-radius: 50%;
+  }
+  /* Trineo de Santa: cruza la pantalla de vez en cuando, muy abajo del header y
+     con pointer-events:none, así nunca tapa ni bloquea botones/anuncios. */
+  .santa-sleigh-lane { position: fixed; top: 68px; left: 0; width: 100%; height: 36px; pointer-events: none; z-index: 6; overflow: hidden; }
+  .santa-sleigh-lane span { position: absolute; left: -15%; font-size: 1.8rem; white-space: nowrap; animation: santa-fly 26s linear infinite; animation-delay: 4s; }
+  @keyframes santa-fly {
+    0% { left: -15%; opacity: 0; }
+    5% { opacity: 1; }
+    45% { opacity: 1; }
+    50% { left: 115%; opacity: 0; }
+    100% { left: 115%; opacity: 0; }
+  }
   footer { text-align: center; margin-top: 40px; font-size: 0.7rem; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
   .social-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; text-align: center; }
   .social-card-title { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); margin-bottom: 12px; }
@@ -288,8 +316,9 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
   .testimonials-scroll img { height: 220px; width: auto; border-radius: 12px; border: 1px solid var(--border-color); flex-shrink: 0; object-fit: cover; }
 </style>
 </head>
-<body>
+<body class="${theme.priceHats ? "theme-santa-hats" : ""}">
 ${renderFestiveDecor(theme)}
+${renderSantaSleigh(theme)}
   <header>
     <div class="header-content">
       <div class="brand-info">
