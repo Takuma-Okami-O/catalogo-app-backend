@@ -6,9 +6,11 @@ export type PlanType = "FREE" | "PREMIUM";
  * ajustar los valores por defecto vía GlobalConfig (ver GlobalConfig.ts),
  * pero la ENTIDAD es quien decide si un plan puede o no agregar más productos.
  */
+// App de acceso libre por ahora: mismo límite generoso para todos los
+// vendedores, sin distinción de plan (antes Free=30, Premium=1000).
 export const DEFAULT_PLAN_LIMITS: Record<PlanType, number> = {
-  FREE: 30,
-  PREMIUM: 1000,
+  FREE: 500,
+  PREMIUM: 500,
 };
 
 export interface StoreProps {
@@ -88,9 +90,6 @@ export class Store {
 
   /** Solo las tiendas PREMIUM pueden elegir una plantilla distinta a la clásica. */
   changeTemplate(templateId: string): void {
-    if (this.props.plan !== "PREMIUM") {
-      throw new Error("Store: elegir una plantilla distinta es una función exclusiva del plan Premium.");
-    }
     this.props.templateId = templateId;
   }
   get createdAt() { return this.props.createdAt; }

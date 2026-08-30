@@ -39,7 +39,7 @@ describe("Códigos de activación Premium", () => {
     const upgraded = await redeemCodeUseCase.execute("vendedor-1", code);
 
     expect(upgraded.plan).toBe("PREMIUM");
-    expect(upgraded.productLimit).toBe(1000);
+    expect(upgraded.productLimit).toBe(500);
   });
 
   it("rechaza un código inexistente", async () => {

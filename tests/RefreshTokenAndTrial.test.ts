@@ -70,7 +70,7 @@ describe("StartFreeTrialUseCase", () => {
     const upgraded = await startTrialUseCase.execute("vendedor-1");
 
     expect(upgraded.plan).toBe("PREMIUM");
-    expect(upgraded.productLimit).toBe(1000);
+    expect(upgraded.productLimit).toBe(500);
     expect(upgraded.hasUsedTrial).toBe(true);
   });
 

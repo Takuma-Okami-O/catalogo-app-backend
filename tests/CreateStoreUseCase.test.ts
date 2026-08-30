@@ -20,7 +20,7 @@ describe("CreateStoreUseCase", () => {
 
     expect(store.slug).toBe("gaby-encantos");
     expect(store.plan).toBe("FREE");
-    expect(store.productLimit).toBe(30);
+    expect(store.productLimit).toBe(500);
   });
 
   it("evita colisiones de slug agregando un sufijo numérico", async () => {

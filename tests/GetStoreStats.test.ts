@@ -10,7 +10,6 @@ import {
   InMemoryOrderRepository,
   InMemoryStoreVisitRepository,
 } from "../src/infrastructure/services/InMemoryCatalogRepositories";
-import { ForbiddenError } from "../src/domain/errors/AppError";
 
 describe("GetStoreStatsUseCase", () => {
   let storeRepository: InMemoryStoreRepository;
@@ -37,14 +36,15 @@ describe("GetStoreStatsUseCase", () => {
     changePlanUseCase = new ChangeStorePlanUseCase(storeRepository);
   });
 
-  it("rechaza el acceso a estadísticas si la tienda está en plan FREE", async () => {
+  it("permite el acceso a estadísticas aunque la tienda esté en plan FREE", async () => {
     await createStoreUseCase.execute({
       ownerId: "vendedor-1",
       name: "Tienda Free",
       whatsappPhone: "584120000000",
     });
 
-    await expect(getStatsUseCase.execute("vendedor-1")).rejects.toThrow(ForbiddenError);
+    const stats = await getStatsUseCase.execute("vendedor-1");
+    expect(stats.totalVisits).toBe(0);
   });
 
   it("calcula visitas totales y productos más pedidos para una tienda PREMIUM", async () => {

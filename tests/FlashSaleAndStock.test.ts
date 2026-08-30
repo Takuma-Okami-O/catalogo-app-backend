@@ -6,7 +6,7 @@ import {
   InMemoryStoreRepository,
   InMemoryProductRepository,
 } from "../src/infrastructure/services/InMemoryCatalogRepositories";
-import { ForbiddenError, ValidationError } from "../src/domain/errors/AppError";
+import { ValidationError } from "../src/domain/errors/AppError";
 
 describe("Stock y Ofertas relámpago", () => {
   let storeRepository: InMemoryStoreRepository;
@@ -83,7 +83,7 @@ describe("Stock y Ofertas relámpago", () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it("rechaza activar una oferta relámpago en plan FREE", async () => {
+  it("permite activar una oferta relámpago aunque la tienda esté en plan FREE", async () => {
     const store = await createStoreUseCase.execute({
       ownerId: "vendedor-1",
       name: "Tienda Free",
@@ -98,14 +98,14 @@ describe("Stock y Ofertas relámpago", () => {
       imageUrl: "https://example.com/img.jpg",
     });
 
-    await expect(
-      updateProductUseCase.execute({
-        productId: product.id,
-        requesterId: "vendedor-1",
-        saleDiscountPercent: 20,
-        saleEndsAt: new Date(Date.now() + 3600_000).toISOString(),
-      })
-    ).rejects.toThrow(ForbiddenError);
+    const updated = await updateProductUseCase.execute({
+      productId: product.id,
+      requesterId: "vendedor-1",
+      saleDiscountPercent: 20,
+      saleEndsAt: new Date(Date.now() + 3600_000).toISOString(),
+    });
+
+    expect(updated.hasActiveSale).toBe(true);
   });
 
   it("permite activar una oferta relámpago en plan PREMIUM y se refleja en el JSON público", async () => {

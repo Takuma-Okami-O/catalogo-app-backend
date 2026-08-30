@@ -69,23 +69,72 @@ function renderTestimonialsSection(store: StoreView): string {
  */
 function renderFestiveDecor(theme: CatalogTheme): string {
   if (!theme.decorEmojis || theme.decorEmojis.length === 0) return "";
-  const spans = Array.from({ length: 14 })
+  const spans = Array.from({ length: 10 })
     .map((_, i) => {
       const emoji = theme.decorEmojis![i % theme.decorEmojis!.length];
       const left = Math.round((i * 137.5) % 100); // distribución pseudo-aleatoria pero determinista
       const duration = 10 + (i % 5) * 3; // entre 10s y 22s
       const delay = (i % 7) * 1.3;
-      const size = 1.1 + (i % 3) * 0.3;
+      const size = 0.85 + (i % 3) * 0.2;
       return `<span style="left:${left}%; animation-duration:${duration}s; animation-delay:${delay}s; font-size:${size}rem;">${emoji}</span>`;
     })
     .join("");
   return `<div class="festive-decor">${spans}</div>`;
 }
 
-/** El trineo de Santa: solo aparece si el tema tiene `santaSleigh: true`. */
+/** El trineo de Santa: solo aparece si el tema tiene `santaSleigh: true`.
+ *  Ilustración propia en SVG (formas vectoriales planas), no emojis —
+ *  reno corriendo, jalando un trineo con Santa saludando adentro. */
 function renderSantaSleigh(theme: CatalogTheme): string {
   if (!theme.santaSleigh) return "";
-  return `<div class="santa-sleigh-lane"><span>🛷💨🦌🦌 🎅</span></div>`;
+  const svg = `
+    <svg viewBox="0 0 320 150" xmlns="http://www.w3.org/2000/svg">
+      <!-- Cuerda que conecta el trineo con el reno -->
+      <path d="M175,100 Q205,80 228,92" stroke="#8a5a34" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+      <!-- Reno -->
+      <g>
+        <!-- patas -->
+        <rect x="222" y="100" width="7" height="26" rx="3.5" fill="#a9713f" transform="rotate(18 225 113)"/>
+        <rect x="240" y="102" width="7" height="26" rx="3.5" fill="#a9713f" transform="rotate(-8 243 115)"/>
+        <rect x="258" y="100" width="7" height="26" rx="3.5" fill="#a9713f" transform="rotate(22 261 113)"/>
+        <rect x="272" y="98" width="7" height="26" rx="3.5" fill="#a9713f" transform="rotate(-14 275 111)"/>
+        <!-- cuerpo -->
+        <ellipse cx="252" cy="92" rx="36" ry="21" fill="#c68958"/>
+        <ellipse cx="256" cy="102" rx="21" ry="10" fill="#f3d9b1"/>
+        <!-- cola -->
+        <ellipse cx="216" cy="88" rx="6" ry="5" fill="#a9713f"/>
+        <!-- cabeza -->
+        <ellipse cx="292" cy="76" rx="18" ry="16" fill="#c68958"/>
+        <ellipse cx="306" cy="84" rx="10" ry="7.5" fill="#f3d9b1"/>
+        <circle cx="315" cy="84" r="5.5" fill="#e6483c"/>
+        <circle cx="296" cy="70" r="2.3" fill="#2b2320"/>
+        <ellipse cx="280" cy="62" rx="5" ry="8" fill="#c68958" transform="rotate(-20 280 62)"/>
+        <ellipse cx="300" cy="58" rx="5" ry="8" fill="#c68958" transform="rotate(10 300 58)"/>
+        <!-- astas -->
+        <path d="M284,58 L278,42 M278,42 L272,36 M278,42 L284,38" stroke="#7a5230" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <path d="M300,52 L302,36 M302,36 L296,30 M302,36 L308,32" stroke="#7a5230" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      </g>
+
+      <!-- Trineo -->
+      <g>
+        <path d="M40,128 Q30,128 30,120 L30,108 Q65,102 110,106 L175,110 Q182,110 182,118 L182,124 Q182,130 175,130 L46,130 Q40,130 40,128 Z" fill="#d1272c"/>
+        <path d="M22,134 Q30,140 45,134 L178,134 Q188,140 198,134" stroke="#f2b705" stroke-width="6" fill="none" stroke-linecap="round"/>
+        <rect x="55" y="90" width="55" height="20" rx="8" fill="#1f7a4d"/>
+        <!-- Santa sentado -->
+        <ellipse cx="95" cy="98" rx="24" ry="20" fill="#d1272c"/>
+        <circle cx="98" cy="78" r="14" fill="#f0b892"/>
+        <path d="M84,80 Q98,102 114,80 Q116,96 98,100 Q80,96 84,80 Z" fill="#ffffff"/>
+        <path d="M84,70 Q98,52 116,68 Q120,58 108,50 Q96,44 86,52 Q78,58 84,70 Z" fill="#d1272c"/>
+        <circle cx="118" cy="52" r="6" fill="#ffffff"/>
+        <rect x="83" y="66" width="30" height="8" rx="4" fill="#ffffff"/>
+        <circle cx="92" cy="80" r="1.8" fill="#2b2320"/>
+        <circle cx="104" cy="80" r="1.8" fill="#2b2320"/>
+        <ellipse cx="118" cy="92" rx="8" ry="6" fill="#f0b892" transform="rotate(-25 118 92)"/>
+      </g>
+    </svg>
+  `;
+  return `<div class="santa-sleigh-lane"><div class="santa-sleigh-wrap">${svg}</div></div>`;
 }
 
 function escapeHtml(text: string): string {
@@ -276,7 +325,7 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
   .testimonial-lightbox-close { position: absolute; top: -6px; right: -6px; width: 36px; height: 36px; border-radius: 50%; background: #ffffff; color: #1a1a1a; border: none; font-size: 1rem; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
   .testimonials-scroll img { cursor: zoom-in; }
   .festive-decor { position: fixed; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; }
-  .festive-decor span { position: absolute; top: -40px; font-size: 1.6rem; opacity: 0.55; animation: festive-fall linear infinite; }
+  .festive-decor span { position: absolute; top: -40px; font-size: 1.2rem; opacity: 0.4; animation: festive-fall linear infinite; }
   @keyframes festive-fall {
     0% { transform: translateY(-40px) rotate(0deg); }
     100% { transform: translateY(110vh) rotate(360deg); }
@@ -293,13 +342,16 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
     background: #fff; border-radius: 50%;
   }
   /* Trineo de Santa: cruza la pantalla de vez en cuando, muy abajo del header y
-     con pointer-events:none, así nunca tapa ni bloquea botones/anuncios. */
-  .santa-sleigh-lane { position: fixed; top: 68px; left: 0; width: 100%; height: 36px; pointer-events: none; z-index: 6; overflow: hidden; }
-  .santa-sleigh-lane span { position: absolute; left: -15%; font-size: 1.8rem; white-space: nowrap; animation: santa-fly 26s linear infinite; animation-delay: 4s; }
+     con pointer-events:none, así nunca tapa ni bloquea botones/anuncios.
+     Diseño tipo "estrella fugaz": Santa con una estela de brillo detrás,
+     en vez de varios emojis pegados (se veía desordenado). */
+  .santa-sleigh-lane { position: fixed; top: 68px; left: 0; width: 100%; height: 44px; pointer-events: none; z-index: 6; overflow: hidden; }
+  .santa-sleigh-wrap { position: absolute; left: -25%; top: 50%; transform: translateY(-50%); display: flex; align-items: center; animation: santa-fly 32s linear infinite; animation-delay: 6s; }
+  .santa-sleigh-wrap svg { width: 150px; height: auto; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.3)); }
   @keyframes santa-fly {
-    0% { left: -15%; opacity: 0; }
-    5% { opacity: 1; }
-    45% { opacity: 1; }
+    0% { left: -25%; opacity: 0; }
+    6% { opacity: 1; }
+    42% { opacity: 1; }
     50% { left: 115%; opacity: 0; }
     100% { left: 115%; opacity: 0; }
   }

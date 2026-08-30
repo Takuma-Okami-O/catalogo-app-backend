@@ -3,7 +3,7 @@ import {
   IStoreRepository,
   IStoreVisitRepository,
 } from "../../domain/repositories/ICatalogRepositories";
-import { ForbiddenError, StoreNotFoundError } from "../../domain/errors/AppError";
+import { StoreNotFoundError } from "../../domain/errors/AppError";
 import { getProductRef } from "../../domain/utils/productRef";
 
 export interface TopProduct {
@@ -32,11 +32,6 @@ export class GetStoreStatsUseCase {
     const store = await this.storeRepository.findByOwnerId(ownerId);
     if (!store) {
       throw new StoreNotFoundError();
-    }
-    if (store.plan !== "PREMIUM") {
-      throw new ForbiddenError(
-        "Las estadísticas de tu catálogo son una función exclusiva del plan Premium. Actualiza tu plan para ver visitas y productos más pedidos."
-      );
     }
 
     const [totalVisits, visitsLast7Days, orders] = await Promise.all([

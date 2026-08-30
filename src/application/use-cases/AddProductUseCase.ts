@@ -5,7 +5,6 @@ import {
   IStoreRepository,
 } from "../../domain/repositories/ICatalogRepositories";
 import {
-  ForbiddenError,
   ProductLimitExceededError,
   StoreNotFoundError,
   ValidationError,
@@ -50,15 +49,11 @@ export class AddProductUseCase {
       throw new ValidationError("Debes agregar al menos una imagen del producto.");
     }
 
-    // Regla de negocio premium: el GIF animado del producto es un beneficio
-    // exclusivo del plan PREMIUM. Un vendedor FREE puede subir imagen, pero
-    // no GIF — esto empuja la conversión al plan pago (ver ideas de premium
-    // en PREMIUM_FEATURES.md).
-    if (input.gifUrl && store.plan !== "PREMIUM") {
-      throw new ForbiddenError(
-        "Los GIFs animados son una función exclusiva del plan Premium. Actualiza tu plan para destacar este producto con animación."
-      );
-    }
+    // App de acceso libre por ahora: todas las funciones (GIF, destacados,
+    // ofertas, plantillas, estadísticas) están disponibles para todos los
+    // vendedores, sin distinción de plan. El sistema de planes/códigos de
+    // activación se conserva por si se reactiva la monetización más
+    // adelante, pero ya no bloquea ninguna función aquí.
 
     // Regla de negocio central del modelo de planes: Free = 20, Premium = 500
     // (ver DEFAULT_PLAN_LIMITS en Store.ts, ajustable por el super admin).
@@ -69,11 +64,6 @@ export class AddProductUseCase {
 
     let isFeatured = false;
     if (input.isFeatured) {
-      if (store.plan !== "PREMIUM") {
-        throw new ForbiddenError(
-          "Marcar productos como destacados es una función exclusiva del plan Premium."
-        );
-      }
       const storeProducts = await this.productRepository.findByStoreId(store.id);
       const currentlyFeatured = storeProducts.filter((p) => p.isFeatured).length;
       if (currentlyFeatured >= MAX_FEATURED_PRODUCTS) {

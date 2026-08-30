@@ -3,7 +3,6 @@ import {
   IStoreRepository,
 } from "../../domain/repositories/ICatalogRepositories";
 import {
-  ForbiddenError,
   ProductNotFoundError,
   StoreNotFoundError,
   ValidationError,
@@ -55,18 +54,10 @@ export class UpdateProductUseCase {
       product.updatePrice(input.price);
     }
 
-    if (input.gifUrl !== undefined && input.gifUrl !== null && store.plan !== "PREMIUM") {
-      throw new ForbiddenError(
-        "Los GIFs animados son una función exclusiva del plan Premium."
-      );
-    }
+    // App de acceso libre por ahora: sin restricciones de plan en GIF,
+    // destacados u ofertas relámpago (ver misma nota en AddProductUseCase).
 
     if (input.isFeatured !== undefined) {
-      if (input.isFeatured && store.plan !== "PREMIUM") {
-        throw new ForbiddenError(
-          "Marcar productos como destacados es una función exclusiva del plan Premium."
-        );
-      }
       if (input.isFeatured && !product.isFeatured) {
         const storeProducts = await this.productRepository.findByStoreId(product.storeId);
         const currentlyFeatured = storeProducts.filter((p) => p.isFeatured).length;
@@ -89,11 +80,6 @@ export class UpdateProductUseCase {
     }
 
     if (input.saleDiscountPercent !== undefined || input.saleEndsAt !== undefined) {
-      if (store.plan !== "PREMIUM") {
-        throw new ForbiddenError(
-          "Las ofertas relámpago son una función exclusiva del plan Premium."
-        );
-      }
       const discountPercent = input.saleDiscountPercent ?? null;
       const endsAt = input.saleEndsAt ? new Date(input.saleEndsAt) : null;
       if (discountPercent !== null && endsAt === null) {

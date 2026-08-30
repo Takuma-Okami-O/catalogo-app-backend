@@ -1,6 +1,6 @@
 import { Store } from "../../domain/entities/Store";
 import { IStoreRepository } from "../../domain/repositories/ICatalogRepositories";
-import { ForbiddenError, StoreNotFoundError, ValidationError } from "../../domain/errors/AppError";
+import { StoreNotFoundError, ValidationError } from "../../domain/errors/AppError";
 import { CATALOG_THEMES } from "../../infrastructure/http/routes/templates/catalogThemes";
 
 export class ChangeStoreTemplateUseCase {
@@ -15,14 +15,7 @@ export class ChangeStoreTemplateUseCase {
       throw new ValidationError(`La plantilla "${templateId}" no existe.`);
     }
 
-    try {
-      store.changeTemplate(templateId);
-    } catch {
-      throw new ForbiddenError(
-        "Elegir una plantilla distinta a la clásica es una función exclusiva del plan Premium."
-      );
-    }
-
+    store.changeTemplate(templateId);
     await this.storeRepository.save(store);
     return store;
   }

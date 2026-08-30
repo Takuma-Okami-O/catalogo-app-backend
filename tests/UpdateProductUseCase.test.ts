@@ -6,7 +6,7 @@ import {
   InMemoryStoreRepository,
   InMemoryProductRepository,
 } from "../src/infrastructure/services/InMemoryCatalogRepositories";
-import { ForbiddenError, ValidationError } from "../src/domain/errors/AppError";
+import { ValidationError } from "../src/domain/errors/AppError";
 
 describe("UpdateProductUseCase — Producto destacado", () => {
   let storeRepository: InMemoryStoreRepository;
@@ -50,7 +50,7 @@ describe("UpdateProductUseCase — Producto destacado", () => {
     expect(updated.isFeatured).toBe(true);
   });
 
-  it("rechaza marcar como destacado en plan FREE", async () => {
+  it("permite marcar como destacado aunque la tienda esté en plan FREE", async () => {
     const store = await createStoreUseCase.execute({
       ownerId: "vendedor-1",
       name: "Tienda Free",
@@ -65,9 +65,13 @@ describe("UpdateProductUseCase — Producto destacado", () => {
       imageUrl: "https://example.com/img.jpg",
     });
 
-    await expect(
-      updateProductUseCase.execute({ productId: product.id, requesterId: "vendedor-1", isFeatured: true })
-    ).rejects.toThrow(ForbiddenError);
+    const updated = await updateProductUseCase.execute({
+      productId: product.id,
+      requesterId: "vendedor-1",
+      isFeatured: true,
+    });
+
+    expect(updated.isFeatured).toBe(true);
   });
 
   it("rechaza marcar un 4to producto como destacado (límite de 3)", async () => {
