@@ -63,6 +63,8 @@ model User {
   storeName    String
   role         UserRole @default(VENDEDOR)
   createdAt    DateTime @default(now())
+  passwordResetCodeHash   String?
+  passwordResetExpiresAt  DateTime?
 
   store Store?
 

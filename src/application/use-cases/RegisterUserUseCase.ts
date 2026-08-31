@@ -35,6 +35,8 @@ export class RegisterUserUseCase {
       storeName: input.storeName.trim(),
       role: "VENDEDOR",
       createdAt: new Date(),
+      passwordResetCodeHash: null,
+      passwordResetExpiresAt: null,
     });
 
     await this.userRepository.save(user);

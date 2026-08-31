@@ -16,21 +16,18 @@ export class PrismaUserRepository implements IUserRepository {
   }
 
   async save(user: User): Promise<void> {
+    const data = {
+      email: user.email,
+      passwordHash: user.passwordHash,
+      storeName: user.storeName,
+      role: user.role,
+      passwordResetCodeHash: user.passwordResetCodeHash,
+      passwordResetExpiresAt: user.passwordResetExpiresAt,
+    };
     await this.prisma.user.upsert({
       where: { id: user.id },
-      create: {
-        id: user.id,
-        email: user.email,
-        passwordHash: user.passwordHash,
-        storeName: user.storeName,
-        role: user.role,
-      },
-      update: {
-        email: user.email,
-        passwordHash: user.passwordHash,
-        storeName: user.storeName,
-        role: user.role,
-      },
+      create: { id: user.id, ...data },
+      update: data,
     });
   }
 
@@ -43,6 +40,8 @@ export class PrismaUserRepository implements IUserRepository {
       storeName: row.storeName,
       role: row.role,
       createdAt: row.createdAt,
+      passwordResetCodeHash: row.passwordResetCodeHash ?? null,
+      passwordResetExpiresAt: row.passwordResetExpiresAt ?? null,
     });
   }
 }
