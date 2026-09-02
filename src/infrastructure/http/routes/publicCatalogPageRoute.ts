@@ -181,6 +181,8 @@ interface ProductView {
   price: number;
   imageUrl: string;
   gifUrl: string | null;
+  images: string[];
+  videoUrl: string | null;
   available: boolean;
   isFeatured: boolean;
   stockCount: number | null;
@@ -218,6 +220,8 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
         precio: p.price,
         disponible: p.isEffectivelyAvailable,
         imagen: p.gifUrl ? withAnimatedGifDelivery(p.gifUrl) : p.imageUrl,
+        imagenes: [p.gifUrl ? withAnimatedGifDelivery(p.gifUrl) : p.imageUrl, ...(p.images || [])],
+        video: p.videoUrl || null,
         destacado: p.isFeatured,
         stock: p.stockCount,
         nuevo: isNew,
@@ -315,6 +319,13 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
   .lightbox-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.85); }
   .lightbox-content { position: relative; max-width: 480px; width: 100%; background: var(--card-bg); color: var(--text-main); border-radius: 20px; overflow: hidden; z-index: 1; }
   .lightbox-content img { width: 100%; height: 320px; object-fit: cover; }
+  .lightbox-slides { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .lightbox-slides::-webkit-scrollbar { display: none; }
+  .lightbox-slide { flex: 0 0 100%; scroll-snap-align: start; }
+  .lightbox-slide img, .lightbox-slide video { width: 100%; height: 320px; object-fit: cover; display: block; background: #000; }
+  .lightbox-dots { display: flex; justify-content: center; gap: 6px; padding: 10px 0 0; }
+  .lightbox-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border-color); transition: background 0.2s; }
+  .lightbox-dot.active { background: var(--primary); }
   .lightbox-info { padding: 18px; }
   .lightbox-close { position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,0.9); border: none; font-size: 1rem; cursor: pointer; z-index: 2; }
   .testimonial-lightbox { position: fixed; inset: 0; z-index: 410; display: none; align-items: center; justify-content: center; padding: 20px; }
@@ -438,7 +449,8 @@ ${renderSantaSleigh(theme)}
     <div class="lightbox-backdrop" onclick="cerrarLightbox()"></div>
     <div class="lightbox-content">
       <button class="lightbox-close" onclick="cerrarLightbox()">✕</button>
-      <img id="lightboxImg" src="" alt="">
+      <div class="lightbox-slides" id="lightboxSlides"></div>
+      <div class="lightbox-dots" id="lightboxDots"></div>
       <div class="lightbox-info">
         <span class="product-cat" id="lightboxCat"></span>
         <h3 class="product-title" style="font-size:1rem;margin:4px 0;" id="lightboxName"></h3>
@@ -621,7 +633,20 @@ ${renderSantaSleigh(theme)}
     function abrirLightbox(id) {
       const prod = productos.find(p => p.id === id);
       if (!prod) return;
-      document.getElementById('lightboxImg').src = prod.imagen;
+      const slidesEl = document.getElementById('lightboxSlides');
+      const dotsEl = document.getElementById('lightboxDots');
+      const medios = (prod.imagenes && prod.imagenes.length ? prod.imagenes : [prod.imagen]);
+      slidesEl.innerHTML = medios.map(url => \`<div class="lightbox-slide"><img src="\${url}" alt="\${prod.nombre}" loading="lazy"></div>\`).join('')
+        + (prod.video ? \`<div class="lightbox-slide"><video src="\${prod.video}" controls playsinline preload="metadata"></video></div>\` : '');
+      const totalSlides = medios.length + (prod.video ? 1 : 0);
+      dotsEl.innerHTML = totalSlides > 1
+        ? medios.map((_, i) => \`<span class="lightbox-dot \${i === 0 ? 'active' : ''}"></span>\`).join('') + (prod.video ? '<span class="lightbox-dot"></span>' : '')
+        : '';
+      slidesEl.scrollLeft = 0;
+      slidesEl.onscroll = () => {
+        const idx = Math.round(slidesEl.scrollLeft / slidesEl.clientWidth);
+        dotsEl.querySelectorAll('.lightbox-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+      };
       document.getElementById('lightboxCat').innerText = prod.categoria;
       document.getElementById('lightboxName').innerText = prod.nombre;
       document.getElementById('lightboxPrice').innerText = '$' + prod.precio.toFixed(2);
@@ -629,6 +654,8 @@ ${renderSantaSleigh(theme)}
     }
     function cerrarLightbox() {
       document.getElementById('lightbox').classList.remove('open');
+      const video = document.querySelector('#lightboxSlides video');
+      if (video) video.pause();
     }
 
     function abrirTestimonio(url) {

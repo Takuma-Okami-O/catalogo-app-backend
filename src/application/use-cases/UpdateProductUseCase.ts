@@ -19,6 +19,8 @@ export interface UpdateProductInput {
   price?: number;
   imageUrl?: string;
   gifUrl?: string | null;
+  images?: string[];
+  videoUrl?: string | null;
   available?: boolean;
   isFeatured?: boolean;
   stockCount?: number | null;
@@ -97,6 +99,8 @@ export class UpdateProductUseCase {
       category: input.category,
       imageUrl: input.imageUrl,
       gifUrl: input.gifUrl,
+      images: input.images,
+      videoUrl: input.videoUrl,
       available: input.available,
       stockCount: input.stockCount,
     });

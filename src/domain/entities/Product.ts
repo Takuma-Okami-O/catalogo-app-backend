@@ -1,3 +1,6 @@
+/** Máximo de fotos de galería (sin contar la portada imageUrl). */
+export const MAX_PRODUCT_IMAGES = 5;
+
 export interface ProductProps {
   id: string;
   storeId: string;
@@ -6,6 +9,8 @@ export interface ProductProps {
   price: number;
   imageUrl: string;
   gifUrl: string | null;
+  images: string[]; // Galería: fotos adicionales, además de imageUrl (portada)
+  videoUrl: string | null; // Video corto del producto (opcional)
   available: boolean;
   isFeatured: boolean; // Premium: se muestra primero en el catálogo público con insignia ⭐
   stockCount: number | null; // null = no se rastrea (comportamiento clásico con "available")
@@ -53,7 +58,14 @@ export class Product {
     if (!props.imageUrl) {
       throw new Error("Product: la imagen es obligatoria.");
     }
-    return new Product({ ...props, category: Product.normalizeCategory(props.category) });
+    if (props.images && props.images.length > MAX_PRODUCT_IMAGES) {
+      throw new Error(`Product: máximo ${MAX_PRODUCT_IMAGES} fotos de galería.`);
+    }
+    return new Product({
+      ...props,
+      images: props.images ?? [],
+      category: Product.normalizeCategory(props.category),
+    });
   }
 
   get id() { return this.props.id; }
@@ -63,6 +75,8 @@ export class Product {
   get price() { return this.props.price; }
   get imageUrl() { return this.props.imageUrl; }
   get gifUrl() { return this.props.gifUrl; }
+  get images() { return this.props.images; }
+  get videoUrl() { return this.props.videoUrl; }
   get available() { return this.props.available; }
   get isFeatured() { return this.props.isFeatured; }
   get stockCount() { return this.props.stockCount; }
@@ -102,6 +116,8 @@ export class Product {
     category?: string;
     imageUrl?: string;
     gifUrl?: string | null;
+    images?: string[];
+    videoUrl?: string | null;
     available?: boolean;
     stockCount?: number | null;
   }): void {
@@ -109,6 +125,13 @@ export class Product {
     if (input.category !== undefined) this.props.category = Product.normalizeCategory(input.category);
     if (input.imageUrl !== undefined) this.props.imageUrl = input.imageUrl;
     if (input.gifUrl !== undefined) this.props.gifUrl = input.gifUrl;
+    if (input.images !== undefined) {
+      if (input.images.length > MAX_PRODUCT_IMAGES) {
+        throw new Error(`Product: máximo ${MAX_PRODUCT_IMAGES} fotos de galería.`);
+      }
+      this.props.images = input.images;
+    }
+    if (input.videoUrl !== undefined) this.props.videoUrl = input.videoUrl;
     if (input.available !== undefined) this.props.available = input.available;
     if (input.stockCount !== undefined) {
       if (input.stockCount !== null && input.stockCount < 0) {
@@ -138,6 +161,8 @@ export class Product {
       price: this.props.price,
       imageUrl: this.props.imageUrl,
       gifUrl: this.props.gifUrl,
+      images: this.props.images,
+      videoUrl: this.props.videoUrl,
       available: this.props.available,
       isFeatured: this.props.isFeatured,
       stockCount: this.props.stockCount,

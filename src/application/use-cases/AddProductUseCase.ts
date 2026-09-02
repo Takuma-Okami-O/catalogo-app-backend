@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Product } from "../../domain/entities/Product";
+import { MAX_PRODUCT_IMAGES, Product } from "../../domain/entities/Product";
 import {
   IProductRepository,
   IStoreRepository,
@@ -19,6 +19,8 @@ export interface AddProductInput {
   price: number;
   imageUrl: string;
   gifUrl?: string | null;
+  images?: string[];
+  videoUrl?: string | null;
   isFeatured?: boolean;
   stockCount?: number | null;
 }
@@ -47,6 +49,9 @@ export class AddProductUseCase {
     }
     if (!input.imageUrl) {
       throw new ValidationError("Debes agregar al menos una imagen del producto.");
+    }
+    if (input.images && input.images.length > MAX_PRODUCT_IMAGES) {
+      throw new ValidationError(`Máximo ${MAX_PRODUCT_IMAGES} fotos de galería por producto.`);
     }
 
     // App de acceso libre por ahora: todas las funciones (GIF, destacados,
@@ -82,6 +87,8 @@ export class AddProductUseCase {
       price: input.price,
       imageUrl: input.imageUrl,
       gifUrl: input.gifUrl ?? null,
+      images: input.images ?? [],
+      videoUrl: input.videoUrl ?? null,
       available: true,
       isFeatured,
       stockCount: input.stockCount ?? null,

@@ -186,6 +186,8 @@ export function buildCatalogRoutes(tokenService: ITokenService, repos: CatalogRe
         price: req.body.price,
         imageUrl: req.body.imageUrl,
         gifUrl: req.body.gifUrl ?? null,
+        images: req.body.images,
+        videoUrl: req.body.videoUrl ?? null,
         isFeatured: req.body.isFeatured,
         stockCount: req.body.stockCount,
       });
@@ -205,6 +207,8 @@ export function buildCatalogRoutes(tokenService: ITokenService, repos: CatalogRe
         price: req.body.price,
         imageUrl: req.body.imageUrl,
         gifUrl: req.body.gifUrl,
+        images: req.body.images,
+        videoUrl: req.body.videoUrl,
         available: req.body.available,
         isFeatured: req.body.isFeatured,
         stockCount: req.body.stockCount,

@@ -110,6 +110,8 @@ model Product {
   price     Decimal  @db.Decimal(10, 2)
   imageUrl  String
   gifUrl    String?
+  images    String[] @default([])
+  videoUrl  String?
   available Boolean  @default(true)
   isFeatured Boolean @default(false)
   stockCount Int?
