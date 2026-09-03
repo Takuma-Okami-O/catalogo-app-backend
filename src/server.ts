@@ -7,9 +7,19 @@ import express from "express";
 import { buildAuthRoutes } from "./infrastructure/http/routes/authRoutes";
 import { buildCatalogRoutes } from "./infrastructure/http/routes/catalogRoutes";
 import { buildPublicCatalogPageRoute } from "./infrastructure/http/routes/publicCatalogPageRoute";
+import { buildAgentRoutes } from "./infrastructure/http/routes/agentRoutes";
 import { JwtTokenService } from "./infrastructure/services/JwtTokenService";
 import { globalErrorHandler, notFoundHandler } from "./infrastructure/http/middlewares/globalErrorHandler";
 import { InMemoryStoreRepository, InMemoryProductRepository, InMemoryOrderRepository, InMemoryStoreVisitRepository, InMemoryPremiumCodeRepository } from "./infrastructure/services/InMemoryCatalogRepositories";
+import { InMemoryAgentConversationRepository } from "./infrastructure/services/InMemoryAgentConversationRepository";
+
+// El historial de conversaciones del agente vive en memoria por ahora
+// (igual en producción que en desarrollo): es un borrador de compra, no un
+// registro de negocio como Order, así que perderlo en un redeploy es
+// aceptable en esta primera versión. Si más adelante se quiere conservar
+// el historial entre reinicios, se agrega PrismaAgentConversationRepository
+// implementando la misma interfaz — el resto del código no cambia.
+const conversationRepository = new InMemoryAgentConversationRepository();
 
 const REQUIRED_ENV_VARS = ["JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET"] as const;
 
@@ -65,6 +75,7 @@ async function bootstrap() {
       buildCatalogRoutes(sharedTokenService, { storeRepository, productRepository, orderRepository, visitRepository, codeRepository })
     );
     app.use(buildPublicCatalogPageRoute(storeRepository, productRepository, visitRepository));
+    app.use("/api", buildAgentRoutes(storeRepository, productRepository, conversationRepository));
   } else {
     // Desarrollo local sin BD montada: repos en memoria (se reinician al reiniciar el server).
     // eslint-disable-next-line no-console
@@ -81,6 +92,7 @@ async function bootstrap() {
       buildCatalogRoutes(sharedTokenService, { storeRepository, productRepository, orderRepository, visitRepository, codeRepository })
     );
     app.use(buildPublicCatalogPageRoute(storeRepository, productRepository, visitRepository));
+    app.use("/api", buildAgentRoutes(storeRepository, productRepository, conversationRepository));
   }
 
   app.use(notFoundHandler);

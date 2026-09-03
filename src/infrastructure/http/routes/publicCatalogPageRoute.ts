@@ -297,6 +297,23 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
   .cart-info { font-size: 0.8rem; font-weight: 500; display: flex; align-items: center; gap: 8px; }
   .cart-total { color: #f4d35e; font-weight: 700; font-size: 1rem; }
   .cart-action-hint { font-size: 0.75rem; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 20px; font-weight: 600; }
+  /* ---------- Agente de ventas (chat con IA) ---------- */
+  .agent-bubble { position: fixed; bottom: 20px; right: 16px; width: 56px; height: 56px; border-radius: 50%; background: var(--primary, #1a1a1a); color: #fff; border: none; font-size: 1.5rem; box-shadow: 0 8px 20px rgba(0,0,0,0.25); cursor: pointer; z-index: 250; display: flex; align-items: center; justify-content: center; transition: transform 0.2s ease; }
+  .agent-bubble:active { transform: scale(0.92); }
+  .agent-panel { position: fixed; bottom: 0; right: 0; left: 0; margin: 0 auto; max-width: 380px; width: 94%; max-height: 70vh; background: var(--card-bg); color: var(--text-main); border-radius: 18px 18px 0 0; box-shadow: 0 -12px 35px rgba(0,0,0,0.25); z-index: 260; display: flex; flex-direction: column; transform: translateY(120%); transition: transform 0.3s cubic-bezier(0.1,0.9,0.2,1); }
+  .agent-panel.open { transform: translateY(0); }
+  .agent-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border-color); }
+  .agent-panel-header h4 { font-size: 0.9rem; font-weight: 700; }
+  .agent-panel-header span { font-size: 0.65rem; color: var(--text-muted); display: block; margin-top: 2px; }
+  .agent-panel-close { background: none; border: none; font-size: 1rem; color: var(--text-muted); cursor: pointer; }
+  .agent-messages { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-height: 180px; }
+  .agent-msg { max-width: 82%; padding: 9px 13px; border-radius: 14px; font-size: 0.82rem; line-height: 1.4; white-space: pre-wrap; }
+  .agent-msg.user { align-self: flex-end; background: var(--primary, #1a1a1a); color: #fff; border-bottom-right-radius: 4px; }
+  .agent-msg.assistant { align-self: flex-start; background: rgba(0,0,0,0.06); border-bottom-left-radius: 4px; }
+  .agent-msg.typing { align-self: flex-start; font-style: italic; color: var(--text-muted); background: none; padding: 0 4px; }
+  .agent-input-row { display: flex; gap: 8px; padding: 10px 12px 14px; border-top: 1px solid var(--border-color); }
+  .agent-input-row input { flex: 1; border: 1px solid var(--border-color); border-radius: 20px; padding: 9px 14px; font-size: 0.82rem; background: transparent; color: var(--text-main); }
+  .agent-input-row button { background: var(--primary, #1a1a1a); color: #fff; border: none; border-radius: 50%; width: 38px; height: 38px; font-size: 0.9rem; cursor: pointer; flex-shrink: 0; }
   .cart-modal { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card-bg); color: var(--text-main); border-top-left-radius: 24px; border-top-right-radius: 24px; box-shadow: 0 -15px 40px rgba(0,0,0,0.15); z-index: 300; max-height: 80vh; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.1,0.9,0.2,1); }
   .cart-modal.open { transform: translateY(0); }
   .modal-header { padding: 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
@@ -464,6 +481,23 @@ ${renderSantaSleigh(theme)}
     <div class="testimonial-lightbox-content">
       <button class="testimonial-lightbox-close" onclick="cerrarTestimonio()">✕</button>
       <img id="testimonialLightboxImg" src="" alt="Captura de comprador ampliada">
+    </div>
+  </div>
+
+  <button class="agent-bubble" id="agentBubble" onclick="alternarPanelAgente()" aria-label="Chatear con el asistente">💬</button>
+
+  <div class="agent-panel" id="agentPanel">
+    <div class="agent-panel-header">
+      <div>
+        <h4>Asistente de ${escapeHtml(store.name)}</h4>
+        <span>Pregúntame por productos, precios o disponibilidad</span>
+      </div>
+      <button class="agent-panel-close" onclick="alternarPanelAgente()">✕</button>
+    </div>
+    <div class="agent-messages" id="agentMessages"></div>
+    <div class="agent-input-row">
+      <input type="text" id="agentInput" placeholder="Escribe tu mensaje..." onkeydown="if(event.key==='Enter') enviarMensajeAgente()">
+      <button onclick="enviarMensajeAgente()" aria-label="Enviar">➤</button>
     </div>
   </div>
 
@@ -695,6 +729,82 @@ ${renderSantaSleigh(theme)}
       document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       filtrar();
+    }
+
+    // ---------- Agente de ventas (chat con IA) ----------
+    const AGENT_SESSION_KEY = 'catalogo_agente_sesion_' + SLUG;
+    function obtenerBuyerSessionId() {
+      let id = localStorage.getItem(AGENT_SESSION_KEY);
+      if (!id) {
+        id = (crypto.randomUUID ? crypto.randomUUID() : 'buyer-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+        localStorage.setItem(AGENT_SESSION_KEY, id);
+      }
+      return id;
+    }
+
+    let agentPanelAbierto = false;
+    function alternarPanelAgente() {
+      agentPanelAbierto = !agentPanelAbierto;
+      document.getElementById('agentPanel').classList.toggle('open', agentPanelAbierto);
+      if (agentPanelAbierto) document.getElementById('agentInput').focus();
+    }
+
+    function agregarBurbujaChat(rol, texto) {
+      const cont = document.getElementById('agentMessages');
+      const div = document.createElement('div');
+      div.className = 'agent-msg ' + rol;
+      div.innerText = texto;
+      cont.appendChild(div);
+      cont.scrollTop = cont.scrollHeight;
+      return div;
+    }
+
+    // El agente maneja su propio carrito en el backend (borrador de compra);
+    // aquí lo reflejamos en el carrito visual existente de la página para
+    // que el comprador vea todo en un solo lugar y pueda pagar con el
+    // flujo de WhatsApp que ya existe.
+    function sincronizarCarritoDesdeAgente(cartItemsAgente) {
+      if (!cartItemsAgente) return;
+      cartItemsAgente.forEach(item => {
+        carrito[item.productId] = item.quantity;
+      });
+      actualizarCarritoInterface();
+      filtrar();
+    }
+
+    async function enviarMensajeAgente() {
+      const input = document.getElementById('agentInput');
+      const mensaje = input.value.trim();
+      if (!mensaje) return;
+
+      agregarBurbujaChat('user', mensaje);
+      input.value = '';
+      input.disabled = true;
+      const typingEl = agregarBurbujaChat('typing', 'Escribiendo...');
+
+      try {
+        const resp = await fetch('/api/catalogo/' + encodeURIComponent(SLUG) + '/agente/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ buyerSessionId: obtenerBuyerSessionId(), message: mensaje }),
+        });
+        typingEl.remove();
+
+        if (!resp.ok) {
+          agregarBurbujaChat('assistant', 'Hubo un problema respondiendo tu mensaje. Intenta de nuevo en un momento.');
+          return;
+        }
+
+        const data = await resp.json();
+        agregarBurbujaChat('assistant', data.reply);
+        sincronizarCarritoDesdeAgente(data.cart);
+      } catch (err) {
+        typingEl.remove();
+        agregarBurbujaChat('assistant', 'No pude conectarme. Revisa tu conexión e intenta de nuevo.');
+      } finally {
+        input.disabled = false;
+        input.focus();
+      }
     }
 
     renderizar(productos);

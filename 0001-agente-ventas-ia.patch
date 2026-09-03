@@ -1,0 +1,1204 @@
+From 929f42372fd26c78263f82c05759997fe76c8f89 Mon Sep 17 00:00:00 2001
+From: Catalogo App Dev <dev@catalogo-app.local>
+Date: Thu, 3 Sep 2026 08:00:25 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20agente=20de=20ventas=20con=20IA=20(Clau?=
+ =?UTF-8?q?de)=20integrado=20al=20cat=C3=A1logo?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Nueva feature completa siguiendo la Clean Architecture existente:
+
+- domain: entidad AgentConversation (historial + carrito en construcción),
+  interfaces IAgentConversationRepository e IAgentService.
+- application: ChatWithAgentUseCase orquesta el turno de conversación,
+  depende solo de interfaces de dominio (no de la infraestructura).
+- infrastructure: AnthropicAgentService implementa IAgentService y corre
+  el tool-use loop real contra la API de Claude (buscar_productos,
+  verificar_stock, agregar_al_carrito, ejecutadas contra el
+  IProductRepository real de la tienda). InMemoryAgentConversationRepository
+  para persistencia en memoria (mismo patrón que el resto del proyecto).
+- routes: POST /api/catalogo/:slug/agente/chat, ruta pública sin auth
+  (igual que el resto del catálogo).
+- frontend: widget de chat flotante en la página pública del catálogo,
+  con su propio historial de sesión (localStorage) y sincronización
+  automática con el carrito visual existente.
+- tests: ChatWithAgentUseCase.test.ts (6 casos) usando un FakeAgentService
+  que implementa IAgentService, sin llamar a la API real de Anthropic.
+
+Requiere ANTHROPIC_API_KEY en .env (ver .env.example, nuevo).
+
+83 tests previos siguen pasando + 6 nuevos = 89 tests, 19 suites.
+tsc --noEmit sin errores.
+---
+ .env.example                                  |  32 +++
+ package-lock.json                             | 207 +++++++++++++++++-
+ package.json                                  |   1 +
+ .../use-cases/ChatWithAgentUseCase.ts         |  53 +++++
+ src/domain/entities/AgentConversation.ts      |  97 ++++++++
+ .../IAgentConversationRepository.ts           |   6 +
+ src/domain/services/IAgentService.ts          |   7 +
+ src/infrastructure/http/routes/agentRoutes.ts |  39 ++++
+ .../http/routes/publicCatalogPageRoute.ts     | 110 ++++++++++
+ .../services/AnthropicAgentService.ts         | 190 ++++++++++++++++
+ .../InMemoryAgentConversationRepository.ts    |  18 ++
+ src/server.ts                                 |  12 +
+ tests/ChatWithAgentUseCase.test.ts            | 126 +++++++++++
+ 13 files changed, 896 insertions(+), 2 deletions(-)
+ create mode 100644 .env.example
+ create mode 100644 src/application/use-cases/ChatWithAgentUseCase.ts
+ create mode 100644 src/domain/entities/AgentConversation.ts
+ create mode 100644 src/domain/repositories/IAgentConversationRepository.ts
+ create mode 100644 src/domain/services/IAgentService.ts
+ create mode 100644 src/infrastructure/http/routes/agentRoutes.ts
+ create mode 100644 src/infrastructure/services/AnthropicAgentService.ts
+ create mode 100644 src/infrastructure/services/InMemoryAgentConversationRepository.ts
+ create mode 100644 tests/ChatWithAgentUseCase.test.ts
+
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..781a516
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,32 @@
++# Copia este archivo a .env y completa los valores reales.
++# .env NUNCA debe subirse a git (ya está en .gitignore).
++
++# --- Base de datos ---
++# Si no se define, el server corre con repositorios en memoria (solo desarrollo).
++DATABASE_URL="postgresql://usuario:password@host:5432/nombre_bd"
++
++# --- Autenticación (obligatorias) ---
++JWT_ACCESS_SECRET="cambia_esto_por_un_secreto_largo_y_aleatorio"
++JWT_REFRESH_SECRET="cambia_esto_por_otro_secreto_largo_y_aleatorio"
++JWT_ACCESS_EXPIRES_IN="15m"
++JWT_REFRESH_EXPIRES_IN="7d"
++
++# --- Agente de ventas con IA (Claude) ---
++# Se obtiene en https://console.anthropic.com/ -> API Keys.
++# Sin esta variable, el endpoint /agente/chat responderá con error.
++ANTHROPIC_API_KEY="sk-ant-..."
++
++# --- Envío de emails (recuperación de contraseña, etc.) ---
++RESEND_API_KEY="re_..."
++RESEND_FROM_EMAIL="no-reply@tudominio.com"
++
++# --- Branding del catálogo público ---
++PLATFORM_NAME="Catálogo App"
++COMPANY_NAME="TĀKŪMĀ Group"
++COMPANY_WEBSITE_URL="https://tusitio.com"
++APP_DOWNLOAD_URL="#"
++SHOW_APP_PROMO="false"
++
++# --- Servidor ---
++PORT=3000
++NODE_ENV="development"
+diff --git a/package-lock.json b/package-lock.json
+index 129372f..41d23c9 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -8,6 +8,7 @@
+       "name": "auth-module",
+       "version": "1.0.0",
+       "dependencies": {
++        "@anthropic-ai/sdk": "^0.32.0",
+         "@prisma/client": "^5.18.0",
+         "bcrypt": "^5.1.1",
+         "dotenv": "^16.4.5",
+@@ -28,6 +29,36 @@
+         "typescript": "^5.5.4"
+       }
+     },
++    "node_modules/@anthropic-ai/sdk": {
++      "version": "0.32.1",
++      "resolved": "https://registry.npmjs.org/@anthropic-ai/sdk/-/sdk-0.32.1.tgz",
++      "integrity": "sha512-U9JwTrDvdQ9iWuABVsMLj8nJVwAyQz6QXvgLsVhryhCEPkLsbcP/MXxm+jYcAwLoV8ESbaTTjnD4kuAFa+Hyjg==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/node": "^18.11.18",
++        "@types/node-fetch": "^2.6.4",
++        "abort-controller": "^3.0.0",
++        "agentkeepalive": "^4.2.1",
++        "form-data-encoder": "1.7.2",
++        "formdata-node": "^4.3.2",
++        "node-fetch": "^2.6.7"
++      }
++    },
++    "node_modules/@anthropic-ai/sdk/node_modules/@types/node": {
++      "version": "18.19.130",
++      "resolved": "https://registry.npmjs.org/@types/node/-/node-18.19.130.tgz",
++      "integrity": "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg==",
++      "license": "MIT",
++      "dependencies": {
++        "undici-types": "~5.26.4"
++      }
++    },
++    "node_modules/@anthropic-ai/sdk/node_modules/undici-types": {
++      "version": "5.26.5",
++      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-5.26.5.tgz",
++      "integrity": "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==",
++      "license": "MIT"
++    },
+     "node_modules/@babel/code-frame": {
+       "version": "7.29.7",
+       "resolved": "https://registry.npmjs.org/@babel/code-frame/-/code-frame-7.29.7.tgz",
+@@ -1322,12 +1353,21 @@
+       "version": "20.19.43",
+       "resolved": "https://registry.npmjs.org/@types/node/-/node-20.19.43.tgz",
+       "integrity": "sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==",
+-      "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "undici-types": "~6.21.0"
+       }
+     },
++    "node_modules/@types/node-fetch": {
++      "version": "2.6.13",
++      "resolved": "https://registry.npmjs.org/@types/node-fetch/-/node-fetch-2.6.13.tgz",
++      "integrity": "sha512-QGpRVpzSaUs30JBSGPjOg4Uveu384erbHBoT1zeONvyCfwQxIkUshLAOqN/k9EjGviPRmWTTe6aH2qySWKTVSw==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/node": "*",
++        "form-data": "^4.0.4"
++      }
++    },
+     "node_modules/@types/qs": {
+       "version": "6.15.1",
+       "resolved": "https://registry.npmjs.org/@types/qs/-/qs-6.15.1.tgz",
+@@ -1419,6 +1459,18 @@
+       "integrity": "sha512-nne9/IiQ/hzIhY6pdDnbBtz7DjPTKrY00P/zvPSm5pOFkl6xuGrGnXn/VtTNNfNtAfZ9/1RtehkszU9qcTii0Q==",
+       "license": "ISC"
+     },
++    "node_modules/abort-controller": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/abort-controller/-/abort-controller-3.0.0.tgz",
++      "integrity": "sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==",
++      "license": "MIT",
++      "dependencies": {
++        "event-target-shim": "^5.0.0"
++      },
++      "engines": {
++        "node": ">=6.5"
++      }
++    },
+     "node_modules/accepts": {
+       "version": "1.3.8",
+       "resolved": "https://registry.npmjs.org/accepts/-/accepts-1.3.8.tgz",
+@@ -1493,6 +1545,18 @@
+       "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
+       "license": "MIT"
+     },
++    "node_modules/agentkeepalive": {
++      "version": "4.6.0",
++      "resolved": "https://registry.npmjs.org/agentkeepalive/-/agentkeepalive-4.6.0.tgz",
++      "integrity": "sha512-kja8j7PjmncONqaTsB8fQ+wE2mSU2DJ9D4XKoJ5PFWIdRMa6SLSN1ff4mOr4jCbfRSsxR4keIiySJU0N9T5hIQ==",
++      "license": "MIT",
++      "dependencies": {
++        "humanize-ms": "^1.2.1"
++      },
++      "engines": {
++        "node": ">= 8.0.0"
++      }
++    },
+     "node_modules/ansi-escapes": {
+       "version": "4.3.2",
+       "resolved": "https://registry.npmjs.org/ansi-escapes/-/ansi-escapes-4.3.2.tgz",
+@@ -1591,6 +1655,12 @@
+       "integrity": "sha512-PCVAQswWemu6UdxsDFFX/+gVeYqKAod3D3UVm91jHwynguOwAvYPhx8nNlM++NqRcK6CxxpUafjmhIdKiHibqg==",
+       "license": "MIT"
+     },
++    "node_modules/asynckit": {
++      "version": "0.4.0",
++      "resolved": "https://registry.npmjs.org/asynckit/-/asynckit-0.4.0.tgz",
++      "integrity": "sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==",
++      "license": "MIT"
++    },
+     "node_modules/babel-jest": {
+       "version": "29.7.0",
+       "resolved": "https://registry.npmjs.org/babel-jest/-/babel-jest-29.7.0.tgz",
+@@ -2105,6 +2175,18 @@
+         "color-support": "bin.js"
+       }
+     },
++    "node_modules/combined-stream": {
++      "version": "1.0.8",
++      "resolved": "https://registry.npmjs.org/combined-stream/-/combined-stream-1.0.8.tgz",
++      "integrity": "sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==",
++      "license": "MIT",
++      "dependencies": {
++        "delayed-stream": "~1.0.0"
++      },
++      "engines": {
++        "node": ">= 0.8"
++      }
++    },
+     "node_modules/concat-map": {
+       "version": "0.0.1",
+       "resolved": "https://registry.npmjs.org/concat-map/-/concat-map-0.0.1.tgz",
+@@ -2238,6 +2320,15 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/delayed-stream": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/delayed-stream/-/delayed-stream-1.0.0.tgz",
++      "integrity": "sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.4.0"
++      }
++    },
+     "node_modules/delegates": {
+       "version": "1.0.0",
+       "resolved": "https://registry.npmjs.org/delegates/-/delegates-1.0.0.tgz",
+@@ -2428,6 +2519,21 @@
+         "node": ">= 0.4"
+       }
+     },
++    "node_modules/es-set-tostringtag": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/es-set-tostringtag/-/es-set-tostringtag-2.1.0.tgz",
++      "integrity": "sha512-j6vWzfrGVfyXxge+O0x5sh6cvxAog0a/4Rdd2K36zCMV5eJ+/+tOAngRO8cODMNWbVRdVlmGZQL2YS3yR8bIUA==",
++      "license": "MIT",
++      "dependencies": {
++        "es-errors": "^1.3.0",
++        "get-intrinsic": "^1.2.6",
++        "has-tostringtag": "^1.0.2",
++        "hasown": "^2.0.2"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
+     "node_modules/escalade": {
+       "version": "3.2.0",
+       "resolved": "https://registry.npmjs.org/escalade/-/escalade-3.2.0.tgz",
+@@ -2477,6 +2583,15 @@
+         "node": ">= 0.6"
+       }
+     },
++    "node_modules/event-target-shim": {
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/event-target-shim/-/event-target-shim-5.0.1.tgz",
++      "integrity": "sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=6"
++      }
++    },
+     "node_modules/execa": {
+       "version": "5.1.1",
+       "resolved": "https://registry.npmjs.org/execa/-/execa-5.1.1.tgz",
+@@ -2641,6 +2756,41 @@
+         "node": ">=8"
+       }
+     },
++    "node_modules/form-data": {
++      "version": "4.0.6",
++      "resolved": "https://registry.npmjs.org/form-data/-/form-data-4.0.6.tgz",
++      "integrity": "sha512-vKatAh4SlVfgbv+YtmhiRjhEMJsYpsG1Y2rMQtR+SVSbytsSD1YGzDIcrAJmdFec88u/+VoGmxnl+80gL1tRCQ==",
++      "license": "MIT",
++      "dependencies": {
++        "asynckit": "^0.4.0",
++        "combined-stream": "^1.0.8",
++        "es-set-tostringtag": "^2.1.0",
++        "hasown": "^2.0.4",
++        "mime-types": "^2.1.35"
++      },
++      "engines": {
++        "node": ">= 6"
++      }
++    },
++    "node_modules/form-data-encoder": {
++      "version": "1.7.2",
++      "resolved": "https://registry.npmjs.org/form-data-encoder/-/form-data-encoder-1.7.2.tgz",
++      "integrity": "sha512-qfqtYan3rxrnCk1VYaA4H+Ms9xdpPqvLZa6xmMgFvhO32x7/3J/ExcTd6qpxM0vH2GdMI+poehyBZvqfMTto8A==",
++      "license": "MIT"
++    },
++    "node_modules/formdata-node": {
++      "version": "4.4.1",
++      "resolved": "https://registry.npmjs.org/formdata-node/-/formdata-node-4.4.1.tgz",
++      "integrity": "sha512-0iirZp3uVDjVGt9p49aTaqjk84TrglENEDuqfdlZQ1roC9CWlPk6Avf8EEnZNcAqPonwkG35x4n3ww/1THYAeQ==",
++      "license": "MIT",
++      "dependencies": {
++        "node-domexception": "1.0.0",
++        "web-streams-polyfill": "4.0.0-beta.3"
++      },
++      "engines": {
++        "node": ">= 12.20"
++      }
++    },
+     "node_modules/forwarded": {
+       "version": "0.2.0",
+       "resolved": "https://registry.npmjs.org/forwarded/-/forwarded-0.2.0.tgz",
+@@ -2699,6 +2849,7 @@
+       "version": "2.3.3",
+       "resolved": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
+       "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
++      "dev": true,
+       "hasInstallScript": true,
+       "license": "MIT",
+       "optional": true,
+@@ -2916,6 +3067,21 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/has-tostringtag": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/has-tostringtag/-/has-tostringtag-1.0.2.tgz",
++      "integrity": "sha512-NqADB8VjPFLM2V0VvHUewwwsw0ZWBaIdgo+ieHtK3hasLz4qeCRjYcqfB6AQrBggRKppKF8L52/VqdVsO47Dlw==",
++      "license": "MIT",
++      "dependencies": {
++        "has-symbols": "^1.0.3"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
+     "node_modules/has-unicode": {
+       "version": "2.0.1",
+       "resolved": "https://registry.npmjs.org/has-unicode/-/has-unicode-2.0.1.tgz",
+@@ -3007,6 +3173,15 @@
+         "node": ">=10.17.0"
+       }
+     },
++    "node_modules/humanize-ms": {
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/humanize-ms/-/humanize-ms-1.2.1.tgz",
++      "integrity": "sha512-Fl70vYtsAFb/C06PTS9dZBo7ihau+Tu/DNCk/OyHhea07S+aeMWpFFkUaXRa8fI+ScZbEI8dfSxwY7gxZ9SAVQ==",
++      "license": "MIT",
++      "dependencies": {
++        "ms": "^2.0.0"
++      }
++    },
+     "node_modules/iconv-lite": {
+       "version": "0.4.24",
+       "resolved": "https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.4.24.tgz",
+@@ -4330,6 +4505,26 @@
+       "integrity": "sha512-eh0GgfEkpnoWDq+VY8OyvYhFEzBk6jIYbRKdIlyTiAXIVJ8PyBaKb0rp7oDtoddbdoHWhq8wwr+XZ81F1rpNdA==",
+       "license": "MIT"
+     },
++    "node_modules/node-domexception": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/node-domexception/-/node-domexception-1.0.0.tgz",
++      "integrity": "sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==",
++      "deprecated": "Use your platform's native DOMException instead",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/jimmywarting"
++        },
++        {
++          "type": "github",
++          "url": "https://paypal.me/jimmywarting"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=10.5.0"
++      }
++    },
+     "node_modules/node-fetch": {
+       "version": "2.7.0",
+       "resolved": "https://registry.npmjs.org/node-fetch/-/node-fetch-2.7.0.tgz",
+@@ -5643,7 +5838,6 @@
+       "version": "6.21.0",
+       "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-6.21.0.tgz",
+       "integrity": "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==",
+-      "dev": true,
+       "license": "MIT"
+     },
+     "node_modules/unpipe": {
+@@ -5742,6 +5936,15 @@
+         "makeerror": "1.0.12"
+       }
+     },
++    "node_modules/web-streams-polyfill": {
++      "version": "4.0.0-beta.3",
++      "resolved": "https://registry.npmjs.org/web-streams-polyfill/-/web-streams-polyfill-4.0.0-beta.3.tgz",
++      "integrity": "sha512-QW95TCTaHmsYfHDybGMwO5IJIM93I/6vTRk+daHTWFPhwh+C8Cg7j7XyKrwrj8Ib6vYXe0ocYNrmzY4xAAN6ug==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 14"
++      }
++    },
+     "node_modules/webidl-conversions": {
+       "version": "3.0.1",
+       "resolved": "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-3.0.1.tgz",
+diff --git a/package.json b/package.json
+index f098b1a..7fb2ae3 100644
+--- a/package.json
++++ b/package.json
+@@ -9,6 +9,7 @@
+     "test": "jest"
+   },
+   "dependencies": {
++    "@anthropic-ai/sdk": "^0.32.0",
+     "@prisma/client": "^5.18.0",
+     "bcrypt": "^5.1.1",
+     "dotenv": "^16.4.5",
+diff --git a/src/application/use-cases/ChatWithAgentUseCase.ts b/src/application/use-cases/ChatWithAgentUseCase.ts
+new file mode 100644
+index 0000000..78fd561
+--- /dev/null
++++ b/src/application/use-cases/ChatWithAgentUseCase.ts
+@@ -0,0 +1,53 @@
++import { randomUUID } from "node:crypto";
++import { AgentConversation } from "../../domain/entities/AgentConversation";
++import { IStoreRepository } from "../../domain/repositories/ICatalogRepositories";
++import { IAgentConversationRepository } from "../../domain/repositories/IAgentConversationRepository";
++import { IAgentService } from "../../domain/services/IAgentService";
++import { StoreNotFoundError, ValidationError } from "../../domain/errors/AppError";
++
++export interface ChatWithAgentInput {
++  storeSlug: string;
++  buyerSessionId: string;
++  message: string;
++}
++
++export interface ChatWithAgentOutput {
++  reply: string;
++  cart: ReturnType<AgentConversation["toJSON"]>["cart"];
++  cartTotal: number;
++}
++
++export class ChatWithAgentUseCase {
++  constructor(
++    private readonly storeRepository: IStoreRepository,
++    private readonly conversationRepository: IAgentConversationRepository,
++    private readonly agentService: IAgentService
++  ) {}
++
++  async execute(input: ChatWithAgentInput): Promise<ChatWithAgentOutput> {
++    if (!input.message || input.message.trim().length === 0) {
++      throw new ValidationError("El mensaje no puede estar vacío.");
++    }
++
++    const store = await this.storeRepository.findBySlug(input.storeSlug);
++    if (!store) {
++      throw new StoreNotFoundError();
++    }
++
++    let conversation = await this.conversationRepository.findByStoreAndBuyer(store.id, input.buyerSessionId);
++    if (!conversation) {
++      conversation = AgentConversation.create({
++        id: randomUUID(),
++        storeId: store.id,
++        buyerSessionId: input.buyerSessionId,
++        createdAt: new Date(),
++      });
++    }
++
++    const reply = await this.agentService.handleTurn(conversation, store, input.message.trim());
++
++    await this.conversationRepository.save(conversation);
++
++    return { reply, cart: conversation.cart, cartTotal: conversation.cartTotal() };
++  }
++}
+diff --git a/src/domain/entities/AgentConversation.ts b/src/domain/entities/AgentConversation.ts
+new file mode 100644
+index 0000000..eef1915
+--- /dev/null
++++ b/src/domain/entities/AgentConversation.ts
+@@ -0,0 +1,97 @@
++export type AgentMessageRole = "user" | "assistant";
++
++export interface AgentMessage {
++  role: AgentMessageRole;
++  content: string;
++  createdAt: Date;
++}
++
++export interface AgentCartItem {
++  productId: string;
++  productName: string;
++  unitPrice: number;
++  quantity: number;
++}
++
++export interface AgentConversationProps {
++  id: string;
++  storeId: string;
++  /** Identifica al comprador dentro de la tienda (ej. su número de WhatsApp o un id de sesión web). */
++  buyerSessionId: string;
++  messages: AgentMessage[];
++  cart: AgentCartItem[];
++  createdAt: Date;
++  updatedAt: Date;
++}
++
++const MAX_HISTORY_MESSAGES = 20;
++
++/**
++ * Conversación entre un comprador y el agente de ventas de IA de una tienda.
++ * El carrito vive aquí (no en Order) porque todavía es un borrador: solo se
++ * convierte en Order real cuando el comprador confirma el pedido.
++ */
++export class AgentConversation {
++  private constructor(private props: AgentConversationProps) {}
++
++  static create(props: Omit<AgentConversationProps, "messages" | "cart" | "updatedAt">): AgentConversation {
++    return new AgentConversation({
++      ...props,
++      messages: [],
++      cart: [],
++      updatedAt: props.createdAt,
++    });
++  }
++
++  static restore(props: AgentConversationProps): AgentConversation {
++    return new AgentConversation(props);
++  }
++
++  get id() { return this.props.id; }
++  get storeId() { return this.props.storeId; }
++  get buyerSessionId() { return this.props.buyerSessionId; }
++  get messages() { return this.props.messages; }
++  get cart() { return this.props.cart; }
++  get updatedAt() { return this.props.updatedAt; }
++
++  addMessage(role: AgentMessageRole, content: string): void {
++    this.props.messages.push({ role, content, createdAt: new Date() });
++    // Recorta el historial que se manda al modelo para no disparar costo/latencia
++    // en conversaciones largas. La conversación completa igual queda persistida.
++    if (this.props.messages.length > MAX_HISTORY_MESSAGES) {
++      this.props.messages = this.props.messages.slice(-MAX_HISTORY_MESSAGES);
++    }
++    this.props.updatedAt = new Date();
++  }
++
++  addToCart(item: AgentCartItem): void {
++    const existing = this.props.cart.find((c) => c.productId === item.productId);
++    if (existing) {
++      existing.quantity += item.quantity;
++    } else {
++      this.props.cart.push(item);
++    }
++    this.props.updatedAt = new Date();
++  }
++
++  clearCart(): void {
++    this.props.cart = [];
++    this.props.updatedAt = new Date();
++  }
++
++  cartTotal(): number {
++    return this.props.cart.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
++  }
++
++  toJSON() {
++    return {
++      id: this.props.id,
++      storeId: this.props.storeId,
++      buyerSessionId: this.props.buyerSessionId,
++      messages: this.props.messages,
++      cart: this.props.cart,
++      cartTotal: this.cartTotal(),
++      updatedAt: this.props.updatedAt,
++    };
++  }
++}
+diff --git a/src/domain/repositories/IAgentConversationRepository.ts b/src/domain/repositories/IAgentConversationRepository.ts
+new file mode 100644
+index 0000000..aae054e
+--- /dev/null
++++ b/src/domain/repositories/IAgentConversationRepository.ts
+@@ -0,0 +1,6 @@
++import { AgentConversation } from "../entities/AgentConversation";
++
++export interface IAgentConversationRepository {
++  findByStoreAndBuyer(storeId: string, buyerSessionId: string): Promise<AgentConversation | null>;
++  save(conversation: AgentConversation): Promise<void>;
++}
+diff --git a/src/domain/services/IAgentService.ts b/src/domain/services/IAgentService.ts
+new file mode 100644
+index 0000000..34eed28
+--- /dev/null
++++ b/src/domain/services/IAgentService.ts
+@@ -0,0 +1,7 @@
++import { AgentConversation } from "../entities/AgentConversation";
++import { Store } from "../entities/Store";
++
++export interface IAgentService {
++  /** Procesa un turno de conversación y devuelve el texto de respuesta del agente. Muta `conversation`. */
++  handleTurn(conversation: AgentConversation, store: Store, userMessage: string): Promise<string>;
++}
+diff --git a/src/infrastructure/http/routes/agentRoutes.ts b/src/infrastructure/http/routes/agentRoutes.ts
+new file mode 100644
+index 0000000..1ab4699
+--- /dev/null
++++ b/src/infrastructure/http/routes/agentRoutes.ts
+@@ -0,0 +1,39 @@
++import { Router } from "express";
++import { IStoreRepository, IProductRepository } from "../../../domain/repositories/ICatalogRepositories";
++import { IAgentConversationRepository } from "../../../domain/repositories/IAgentConversationRepository";
++import { ChatWithAgentUseCase } from "../../../application/use-cases/ChatWithAgentUseCase";
++import { AnthropicAgentService } from "../../services/AnthropicAgentService";
++
++/**
++ * Rutas públicas del agente de ventas: las usa el comprador desde el
++ * catálogo web, no requieren autenticación de vendedor (igual que
++ * publicCatalogPageRoute). El comprador se identifica por buyerSessionId,
++ * un id que el frontend genera y guarda (ej. en localStorage) para
++ * mantener el hilo de conversación entre mensajes.
++ */
++export function buildAgentRoutes(storeRepository: IStoreRepository, productRepository: IProductRepository, conversationRepository: IAgentConversationRepository) {
++  const router = Router();
++  const agentService = new AnthropicAgentService(productRepository);
++  const chatWithAgentUseCase = new ChatWithAgentUseCase(storeRepository, conversationRepository, agentService);
++
++  router.post("/catalogo/:slug/agente/chat", async (req, res, next) => {
++    try {
++      const { buyerSessionId, message } = req.body as { buyerSessionId?: string; message?: string };
++      if (!buyerSessionId) {
++        return res.status(400).json({ error: "buyerSessionId es requerido." });
++      }
++
++      const result = await chatWithAgentUseCase.execute({
++        storeSlug: req.params.slug,
++        buyerSessionId,
++        message: message ?? "",
++      });
++
++      res.status(200).json(result);
++    } catch (error) {
++      next(error);
++    }
++  });
++
++  return router;
++}
+diff --git a/src/infrastructure/http/routes/publicCatalogPageRoute.ts b/src/infrastructure/http/routes/publicCatalogPageRoute.ts
+index 341ce36..061214a 100644
+--- a/src/infrastructure/http/routes/publicCatalogPageRoute.ts
++++ b/src/infrastructure/http/routes/publicCatalogPageRoute.ts
+@@ -297,6 +297,23 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
+   .cart-info { font-size: 0.8rem; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+   .cart-total { color: #f4d35e; font-weight: 700; font-size: 1rem; }
+   .cart-action-hint { font-size: 0.75rem; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 20px; font-weight: 600; }
++  /* ---------- Agente de ventas (chat con IA) ---------- */
++  .agent-bubble { position: fixed; bottom: 20px; right: 16px; width: 56px; height: 56px; border-radius: 50%; background: var(--primary, #1a1a1a); color: #fff; border: none; font-size: 1.5rem; box-shadow: 0 8px 20px rgba(0,0,0,0.25); cursor: pointer; z-index: 250; display: flex; align-items: center; justify-content: center; transition: transform 0.2s ease; }
++  .agent-bubble:active { transform: scale(0.92); }
++  .agent-panel { position: fixed; bottom: 0; right: 0; left: 0; margin: 0 auto; max-width: 380px; width: 94%; max-height: 70vh; background: var(--card-bg); color: var(--text-main); border-radius: 18px 18px 0 0; box-shadow: 0 -12px 35px rgba(0,0,0,0.25); z-index: 260; display: flex; flex-direction: column; transform: translateY(120%); transition: transform 0.3s cubic-bezier(0.1,0.9,0.2,1); }
++  .agent-panel.open { transform: translateY(0); }
++  .agent-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border-color); }
++  .agent-panel-header h4 { font-size: 0.9rem; font-weight: 700; }
++  .agent-panel-header span { font-size: 0.65rem; color: var(--text-muted); display: block; margin-top: 2px; }
++  .agent-panel-close { background: none; border: none; font-size: 1rem; color: var(--text-muted); cursor: pointer; }
++  .agent-messages { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-height: 180px; }
++  .agent-msg { max-width: 82%; padding: 9px 13px; border-radius: 14px; font-size: 0.82rem; line-height: 1.4; white-space: pre-wrap; }
++  .agent-msg.user { align-self: flex-end; background: var(--primary, #1a1a1a); color: #fff; border-bottom-right-radius: 4px; }
++  .agent-msg.assistant { align-self: flex-start; background: rgba(0,0,0,0.06); border-bottom-left-radius: 4px; }
++  .agent-msg.typing { align-self: flex-start; font-style: italic; color: var(--text-muted); background: none; padding: 0 4px; }
++  .agent-input-row { display: flex; gap: 8px; padding: 10px 12px 14px; border-top: 1px solid var(--border-color); }
++  .agent-input-row input { flex: 1; border: 1px solid var(--border-color); border-radius: 20px; padding: 9px 14px; font-size: 0.82rem; background: transparent; color: var(--text-main); }
++  .agent-input-row button { background: var(--primary, #1a1a1a); color: #fff; border: none; border-radius: 50%; width: 38px; height: 38px; font-size: 0.9rem; cursor: pointer; flex-shrink: 0; }
+   .cart-modal { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card-bg); color: var(--text-main); border-top-left-radius: 24px; border-top-right-radius: 24px; box-shadow: 0 -15px 40px rgba(0,0,0,0.15); z-index: 300; max-height: 80vh; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.1,0.9,0.2,1); }
+   .cart-modal.open { transform: translateY(0); }
+   .modal-header { padding: 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+@@ -467,6 +484,23 @@ ${renderSantaSleigh(theme)}
+     </div>
+   </div>
+ 
++  <button class="agent-bubble" id="agentBubble" onclick="alternarPanelAgente()" aria-label="Chatear con el asistente">💬</button>
++
++  <div class="agent-panel" id="agentPanel">
++    <div class="agent-panel-header">
++      <div>
++        <h4>Asistente de ${escapeHtml(store.name)}</h4>
++        <span>Pregúntame por productos, precios o disponibilidad</span>
++      </div>
++      <button class="agent-panel-close" onclick="alternarPanelAgente()">✕</button>
++    </div>
++    <div class="agent-messages" id="agentMessages"></div>
++    <div class="agent-input-row">
++      <input type="text" id="agentInput" placeholder="Escribe tu mensaje..." onkeydown="if(event.key==='Enter') enviarMensajeAgente()">
++      <button onclick="enviarMensajeAgente()" aria-label="Enviar">➤</button>
++    </div>
++  </div>
++
+   <script>
+     const SLUG = ${JSON.stringify(slug)};
+     const productos = ${productsJson};
+@@ -697,6 +731,82 @@ ${renderSantaSleigh(theme)}
+       filtrar();
+     }
+ 
++    // ---------- Agente de ventas (chat con IA) ----------
++    const AGENT_SESSION_KEY = 'catalogo_agente_sesion_' + SLUG;
++    function obtenerBuyerSessionId() {
++      let id = localStorage.getItem(AGENT_SESSION_KEY);
++      if (!id) {
++        id = (crypto.randomUUID ? crypto.randomUUID() : 'buyer-' + Date.now() + '-' + Math.random().toString(36).slice(2));
++        localStorage.setItem(AGENT_SESSION_KEY, id);
++      }
++      return id;
++    }
++
++    let agentPanelAbierto = false;
++    function alternarPanelAgente() {
++      agentPanelAbierto = !agentPanelAbierto;
++      document.getElementById('agentPanel').classList.toggle('open', agentPanelAbierto);
++      if (agentPanelAbierto) document.getElementById('agentInput').focus();
++    }
++
++    function agregarBurbujaChat(rol, texto) {
++      const cont = document.getElementById('agentMessages');
++      const div = document.createElement('div');
++      div.className = 'agent-msg ' + rol;
++      div.innerText = texto;
++      cont.appendChild(div);
++      cont.scrollTop = cont.scrollHeight;
++      return div;
++    }
++
++    // El agente maneja su propio carrito en el backend (borrador de compra);
++    // aquí lo reflejamos en el carrito visual existente de la página para
++    // que el comprador vea todo en un solo lugar y pueda pagar con el
++    // flujo de WhatsApp que ya existe.
++    function sincronizarCarritoDesdeAgente(cartItemsAgente) {
++      if (!cartItemsAgente) return;
++      cartItemsAgente.forEach(item => {
++        carrito[item.productId] = item.quantity;
++      });
++      actualizarCarritoInterface();
++      filtrar();
++    }
++
++    async function enviarMensajeAgente() {
++      const input = document.getElementById('agentInput');
++      const mensaje = input.value.trim();
++      if (!mensaje) return;
++
++      agregarBurbujaChat('user', mensaje);
++      input.value = '';
++      input.disabled = true;
++      const typingEl = agregarBurbujaChat('typing', 'Escribiendo...');
++
++      try {
++        const resp = await fetch('/api/catalogo/' + encodeURIComponent(SLUG) + '/agente/chat', {
++          method: 'POST',
++          headers: { 'Content-Type': 'application/json' },
++          body: JSON.stringify({ buyerSessionId: obtenerBuyerSessionId(), message: mensaje }),
++        });
++        typingEl.remove();
++
++        if (!resp.ok) {
++          agregarBurbujaChat('assistant', 'Hubo un problema respondiendo tu mensaje. Intenta de nuevo en un momento.');
++          return;
++        }
++
++        const data = await resp.json();
++        agregarBurbujaChat('assistant', data.reply);
++        sincronizarCarritoDesdeAgente(data.cart);
++      } catch (err) {
++        typingEl.remove();
++        agregarBurbujaChat('assistant', 'No pude conectarme. Revisa tu conexión e intenta de nuevo.');
++      } finally {
++        input.disabled = false;
++        input.focus();
++      }
++    }
++
+     renderizar(productos);
+   </script>
+ </body>
+diff --git a/src/infrastructure/services/AnthropicAgentService.ts b/src/infrastructure/services/AnthropicAgentService.ts
+new file mode 100644
+index 0000000..1d9858c
+--- /dev/null
++++ b/src/infrastructure/services/AnthropicAgentService.ts
+@@ -0,0 +1,190 @@
++import Anthropic from "@anthropic-ai/sdk";
++import { AgentConversation } from "../../domain/entities/AgentConversation";
++import { Store } from "../../domain/entities/Store";
++import { IProductRepository } from "../../domain/repositories/ICatalogRepositories";
++import { IAgentService } from "../../domain/services/IAgentService";
++
++const MODEL = "claude-sonnet-4-6";
++
++/**
++ * Definición de las tools que el modelo puede invocar. El nombre y el
++ * input_schema son literalmente lo que Claude ve para decidir cuándo y
++ * cómo llamarlas — deben ser descriptivos, no solo nombres técnicos.
++ */
++const TOOLS: Anthropic.Tool[] = [
++  {
++    name: "buscar_productos",
++    description:
++      "Busca productos disponibles en el catálogo de la tienda por nombre, categoría o descripción aproximada. " +
++      "Úsala siempre que el cliente pregunte por algo que vender, aunque sea de forma vaga (ej. 'algo para regalar').",
++    input_schema: {
++      type: "object",
++      properties: {
++        query: { type: "string", description: "Palabra o frase para buscar (nombre o categoría del producto)." },
++      },
++      required: ["query"],
++    },
++  },
++  {
++    name: "verificar_stock",
++    description: "Verifica la disponibilidad/stock actual de un producto específico por su ID.",
++    input_schema: {
++      type: "object",
++      properties: {
++        productId: { type: "string" },
++      },
++      required: ["productId"],
++    },
++  },
++  {
++    name: "agregar_al_carrito",
++    description:
++      "Agrega un producto al carrito de compra del cliente en esta conversación. " +
++      "Solo úsala cuando el cliente confirme explícitamente que quiere ese producto, no antes.",
++    input_schema: {
++      type: "object",
++      properties: {
++        productId: { type: "string" },
++        quantity: { type: "integer", minimum: 1 },
++      },
++      required: ["productId", "quantity"],
++    },
++  },
++];
++
++function systemPrompt(store: Store): string {
++  return [
++    `Eres el asistente de ventas de la tienda "${store.name}" dentro de Catálogo App.`,
++    "Ayudas a los clientes a encontrar productos y armar su pedido de forma natural y breve.",
++    "Reglas importantes:",
++    "- Usa SIEMPRE la herramienta buscar_productos antes de afirmar qué hay o no hay disponible; nunca inventes productos ni precios.",
++    "- Si un producto no tiene stock o no está disponible, dilo claramente y ofrece alternativas.",
++    "- Solo agrega productos al carrito cuando el cliente lo confirme explícitamente.",
++    "- Al final de cada respuesta con productos, sé breve: nombre, precio, y una línea de por qué le serviría.",
++    "- Responde siempre en español, con tono cercano pero profesional.",
++  ].join("\n");
++}
++
++export class AnthropicAgentService implements IAgentService {
++  private client: Anthropic;
++
++  constructor(private readonly productRepository: IProductRepository, apiKey?: string) {
++    this.client = new Anthropic({ apiKey: apiKey ?? process.env.ANTHROPIC_API_KEY });
++  }
++
++  /**
++   * Corre el turno completo: manda el mensaje del comprador, ejecuta las tools
++   * que el modelo pida (contra el catálogo real de la tienda) y devuelve el
++   * texto final. Muta `conversation` (mensajes + carrito) directamente;
++   * el caller es responsable de persistirla después.
++   */
++  async handleTurn(conversation: AgentConversation, store: Store, userMessage: string): Promise<string> {
++    conversation.addMessage("user", userMessage);
++
++    const messages: Anthropic.MessageParam[] = conversation.messages.map((m) => ({
++      role: m.role,
++      content: m.content,
++    }));
++
++    // El loop de tool-use: Claude puede pedir varias tools antes de dar la
++    // respuesta final. Cortamos en 5 vueltas como salvaguarda contra loops.
++    for (let turn = 0; turn < 5; turn++) {
++      const response = await this.client.messages.create({
++        model: MODEL,
++        max_tokens: 1024,
++        system: systemPrompt(store),
++        tools: TOOLS,
++        messages,
++      });
++
++      if (response.stop_reason !== "tool_use") {
++        const finalText = response.content
++          .filter((block): block is Anthropic.TextBlock => block.type === "text")
++          .map((block) => block.text)
++          .join("\n");
++        conversation.addMessage("assistant", finalText);
++        return finalText;
++      }
++
++      // Guarda el turno del asistente (incluye los tool_use blocks) y ejecuta cada tool.
++      messages.push({ role: "assistant", content: response.content });
++
++      const toolResults: Anthropic.ToolResultBlockParam[] = [];
++      for (const block of response.content) {
++        if (block.type !== "tool_use") continue;
++        const result = await this.executeTool(block.name, block.input as Record<string, unknown>, conversation, store);
++        toolResults.push({
++          type: "tool_result",
++          tool_use_id: block.id,
++          content: JSON.stringify(result),
++        });
++      }
++      messages.push({ role: "user", content: toolResults });
++    }
++
++    const fallback = "Disculpa, tuve un problema procesando tu solicitud. ¿Puedes reformularla?";
++    conversation.addMessage("assistant", fallback);
++    return fallback;
++  }
++
++  private async executeTool(
++    name: string,
++    input: Record<string, unknown>,
++    conversation: AgentConversation,
++    store: Store
++  ): Promise<unknown> {
++    switch (name) {
++      case "buscar_productos": {
++        const query = String(input.query ?? "").toLowerCase();
++        const products = await this.productRepository.findByStoreId(store.id);
++        const matches = products
++          .filter((p) => p.isEffectivelyAvailable)
++          .filter((p) => p.name.toLowerCase().includes(query) || p.category.toLowerCase().includes(query))
++          .slice(0, 8)
++          .map((p) => ({
++            id: p.id,
++            name: p.name,
++            category: p.category,
++            price: p.price,
++            stockCount: p.stockCount,
++          }));
++        return { count: matches.length, products: matches };
++      }
++
++      case "verificar_stock": {
++        const productId = String(input.productId ?? "");
++        const product = await this.productRepository.findById(productId);
++        if (!product || product.storeId !== store.id) {
++          return { found: false };
++        }
++        return {
++          found: true,
++          available: product.isEffectivelyAvailable,
++          stockCount: product.stockCount,
++        };
++      }
++
++      case "agregar_al_carrito": {
++        const productId = String(input.productId ?? "");
++        const quantity = Number(input.quantity ?? 1);
++        const product = await this.productRepository.findById(productId);
++        if (!product || product.storeId !== store.id) {
++          return { success: false, reason: "Producto no encontrado en esta tienda." };
++        }
++        if (!product.isEffectivelyAvailable) {
++          return { success: false, reason: "Producto sin stock disponible." };
++        }
++        conversation.addToCart({
++          productId: product.id,
++          productName: product.name,
++          unitPrice: product.price,
++          quantity,
++        });
++        return { success: true, cart: conversation.cart, cartTotal: conversation.cartTotal() };
++      }
++
++      default:
++        return { error: `Tool desconocida: ${name}` };
++    }
++  }
++}
+diff --git a/src/infrastructure/services/InMemoryAgentConversationRepository.ts b/src/infrastructure/services/InMemoryAgentConversationRepository.ts
+new file mode 100644
+index 0000000..53f5d41
+--- /dev/null
++++ b/src/infrastructure/services/InMemoryAgentConversationRepository.ts
+@@ -0,0 +1,18 @@
++import { AgentConversation } from "../../domain/entities/AgentConversation";
++import { IAgentConversationRepository } from "../../domain/repositories/IAgentConversationRepository";
++
++export class InMemoryAgentConversationRepository implements IAgentConversationRepository {
++  private conversations = new Map<string, AgentConversation>();
++
++  private key(storeId: string, buyerSessionId: string): string {
++    return `${storeId}::${buyerSessionId}`;
++  }
++
++  async findByStoreAndBuyer(storeId: string, buyerSessionId: string): Promise<AgentConversation | null> {
++    return this.conversations.get(this.key(storeId, buyerSessionId)) ?? null;
++  }
++
++  async save(conversation: AgentConversation): Promise<void> {
++    this.conversations.set(this.key(conversation.storeId, conversation.buyerSessionId), conversation);
++  }
++}
+diff --git a/src/server.ts b/src/server.ts
+index 6b121ff..2faadff 100644
+--- a/src/server.ts
++++ b/src/server.ts
+@@ -7,9 +7,19 @@ import express from "express";
+ import { buildAuthRoutes } from "./infrastructure/http/routes/authRoutes";
+ import { buildCatalogRoutes } from "./infrastructure/http/routes/catalogRoutes";
+ import { buildPublicCatalogPageRoute } from "./infrastructure/http/routes/publicCatalogPageRoute";
++import { buildAgentRoutes } from "./infrastructure/http/routes/agentRoutes";
+ import { JwtTokenService } from "./infrastructure/services/JwtTokenService";
+ import { globalErrorHandler, notFoundHandler } from "./infrastructure/http/middlewares/globalErrorHandler";
+ import { InMemoryStoreRepository, InMemoryProductRepository, InMemoryOrderRepository, InMemoryStoreVisitRepository, InMemoryPremiumCodeRepository } from "./infrastructure/services/InMemoryCatalogRepositories";
++import { InMemoryAgentConversationRepository } from "./infrastructure/services/InMemoryAgentConversationRepository";
++
++// El historial de conversaciones del agente vive en memoria por ahora
++// (igual en producción que en desarrollo): es un borrador de compra, no un
++// registro de negocio como Order, así que perderlo en un redeploy es
++// aceptable en esta primera versión. Si más adelante se quiere conservar
++// el historial entre reinicios, se agrega PrismaAgentConversationRepository
++// implementando la misma interfaz — el resto del código no cambia.
++const conversationRepository = new InMemoryAgentConversationRepository();
+ 
+ const REQUIRED_ENV_VARS = ["JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET"] as const;
+ 
+@@ -65,6 +75,7 @@ async function bootstrap() {
+       buildCatalogRoutes(sharedTokenService, { storeRepository, productRepository, orderRepository, visitRepository, codeRepository })
+     );
+     app.use(buildPublicCatalogPageRoute(storeRepository, productRepository, visitRepository));
++    app.use("/api", buildAgentRoutes(storeRepository, productRepository, conversationRepository));
+   } else {
+     // Desarrollo local sin BD montada: repos en memoria (se reinician al reiniciar el server).
+     // eslint-disable-next-line no-console
+@@ -81,6 +92,7 @@ async function bootstrap() {
+       buildCatalogRoutes(sharedTokenService, { storeRepository, productRepository, orderRepository, visitRepository, codeRepository })
+     );
+     app.use(buildPublicCatalogPageRoute(storeRepository, productRepository, visitRepository));
++    app.use("/api", buildAgentRoutes(storeRepository, productRepository, conversationRepository));
+   }
+ 
+   app.use(notFoundHandler);
+diff --git a/tests/ChatWithAgentUseCase.test.ts b/tests/ChatWithAgentUseCase.test.ts
+new file mode 100644
+index 0000000..b7a47b7
+--- /dev/null
++++ b/tests/ChatWithAgentUseCase.test.ts
+@@ -0,0 +1,126 @@
++import { ChatWithAgentUseCase } from "../src/application/use-cases/ChatWithAgentUseCase";
++import { CreateStoreUseCase } from "../src/application/use-cases/CreateStoreUseCase";
++import { AddProductUseCase } from "../src/application/use-cases/AddProductUseCase";
++import { InMemoryStoreRepository, InMemoryProductRepository } from "../src/infrastructure/services/InMemoryCatalogRepositories";
++import { InMemoryAgentConversationRepository } from "../src/infrastructure/services/InMemoryAgentConversationRepository";
++import { AgentConversation } from "../src/domain/entities/AgentConversation";
++import { Store } from "../src/domain/entities/Store";
++import { IAgentService } from "../src/domain/services/IAgentService";
++import { StoreNotFoundError, ValidationError } from "../src/domain/errors/AppError";
++
++/**
++ * Reemplaza a AnthropicAgentService en los tests: no llama a ninguna API
++ * externa, solo simula que el agente agrega un producto al carrito y
++ * responde un texto fijo. Así probamos ChatWithAgentUseCase de forma
++ * aislada y determinística, sin costo ni red.
++ */
++class FakeAgentService implements IAgentService {
++  public receivedMessages: string[] = [];
++
++  async handleTurn(conversation: AgentConversation, _store: Store, userMessage: string): Promise<string> {
++    this.receivedMessages.push(userMessage);
++    conversation.addMessage("user", userMessage);
++
++    if (userMessage.includes("zapatos")) {
++      conversation.addToCart({
++        productId: "prod-1",
++        productName: "Zapatos Reebok",
++        unitPrice: 40,
++        quantity: 1,
++      });
++    }
++
++    const reply = `Respuesta simulada a: ${userMessage}`;
++    conversation.addMessage("assistant", reply);
++    return reply;
++  }
++}
++
++describe("ChatWithAgentUseCase", () => {
++  let storeRepository: InMemoryStoreRepository;
++  let productRepository: InMemoryProductRepository;
++  let conversationRepository: InMemoryAgentConversationRepository;
++  let fakeAgentService: FakeAgentService;
++  let useCase: ChatWithAgentUseCase;
++  let storeId: string;
++  let storeSlug: string;
++
++  beforeEach(async () => {
++    storeRepository = new InMemoryStoreRepository();
++    productRepository = new InMemoryProductRepository();
++    conversationRepository = new InMemoryAgentConversationRepository();
++    fakeAgentService = new FakeAgentService();
++    useCase = new ChatWithAgentUseCase(storeRepository, conversationRepository, fakeAgentService);
++
++    const createStoreUseCase = new CreateStoreUseCase(storeRepository);
++    const store = await createStoreUseCase.execute({
++      ownerId: "vendedor-1",
++      name: "Gaby Encantos",
++      whatsappPhone: "584120000000",
++    });
++    storeId = store.id;
++    storeSlug = store.slug;
++
++    const addProductUseCase = new AddProductUseCase(storeRepository, productRepository);
++    await addProductUseCase.execute({
++      storeId,
++      requesterId: "vendedor-1",
++      name: "Zapatos Reebok",
++      category: "Caballeros",
++      price: 40,
++      imageUrl: "https://example.com/img.jpg",
++    });
++  });
++
++  it("crea una conversación nueva en el primer mensaje del comprador", async () => {
++    const result = await useCase.execute({
++      storeSlug,
++      buyerSessionId: "buyer-abc",
++      message: "Hola, busco zapatos",
++    });
++
++    expect(result.reply).toContain("Hola, busco zapatos");
++    expect(fakeAgentService.receivedMessages).toEqual(["Hola, busco zapatos"]);
++  });
++
++  it("reutiliza la misma conversación entre mensajes del mismo comprador", async () => {
++    await useCase.execute({ storeSlug, buyerSessionId: "buyer-abc", message: "Hola" });
++    await useCase.execute({ storeSlug, buyerSessionId: "buyer-abc", message: "¿Tienen zapatos?" });
++
++    const conversation = await conversationRepository.findByStoreAndBuyer(storeId, "buyer-abc");
++    expect(conversation).not.toBeNull();
++    expect(conversation!.messages).toHaveLength(4); // 2 user + 2 assistant
++  });
++
++  it("mantiene conversaciones separadas por comprador dentro de la misma tienda", async () => {
++    await useCase.execute({ storeSlug, buyerSessionId: "buyer-1", message: "Hola" });
++    await useCase.execute({ storeSlug, buyerSessionId: "buyer-2", message: "Hola" });
++
++    const conv1 = await conversationRepository.findByStoreAndBuyer(storeId, "buyer-1");
++    const conv2 = await conversationRepository.findByStoreAndBuyer(storeId, "buyer-2");
++    expect(conv1!.id).not.toBe(conv2!.id);
++  });
++
++  it("acumula el carrito cuando el agente decide agregar un producto", async () => {
++    const result = await useCase.execute({
++      storeSlug,
++      buyerSessionId: "buyer-abc",
++      message: "quiero esos zapatos",
++    });
++
++    expect(result.cart).toHaveLength(1);
++    expect(result.cartTotal).toBe(40);
++  });
++
++  it("lanza StoreNotFoundError si el slug no existe", async () => {
++    await expect(
++      useCase.execute({ storeSlug: "tienda-inexistente", buyerSessionId: "buyer-abc", message: "Hola" })
++    ).rejects.toThrow(StoreNotFoundError);
++  });
++
++  it("lanza ValidationError si el mensaje viene vacío", async () => {
++    await expect(
++      useCase.execute({ storeSlug, buyerSessionId: "buyer-abc", message: "   " })
++    ).rejects.toThrow(ValidationError);
++  });
++});
+-- 
+2.43.0
+
