@@ -4,10 +4,10 @@ import { Store } from "../../domain/entities/Store";
 import { IProductRepository } from "../../domain/repositories/ICatalogRepositories";
 import { IAgentService } from "../../domain/services/IAgentService";
 
-// "gemini-2.5-flash" es el modelo estable con function calling bien soportado
-// en el free tier. Los modelos "gemini-3-*-preview" exigen reenviar un
-// "thought_signature" en cada turno o la API rechaza la petición — evitamos
-// esa complejidad extra usando el modelo estable.
+// Google cambia el nombre exacto de su modelo Flash cada pocos meses
+// (gemini-2.5-flash, gemini-3.6-flash, gemini-3.8-flash...). En vez de
+// perseguir ese nombre cada vez, usamos el alias oficial "gemini-flash-latest",
+// que Google redirige automáticamente al Flash vigente en cada momento.
 const MODEL = "gemini-flash-latest";
 
 /** Mismo contrato de tools que en AnthropicAgentService, solo cambia el nombre
@@ -73,6 +73,36 @@ export class GeminiAgentService implements IAgentService {
     this.ai = new GoogleGenAI({ apiKey: apiKey ?? process.env.GEMINI_API_KEY });
   }
 
+  /**
+   * Gemini responde 503 ("modelo saturado, intenta más tarde") o 429 (límite
+   * de tasa) de vez en cuando, sobre todo en el tier gratis — es transitorio,
+   * no un bug. Reintentamos con espera creciente (1s, 2s, 4s) antes de
+   * darnos por vencidos, en vez de fallar al primer intento.
+   */
+  private async generateContentWithRetry(contents: Content[], store: Store) {
+    const maxRetries = 3;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.ai.models.generateContent({
+          model: MODEL,
+          contents,
+          config: {
+            systemInstruction: systemPrompt(store),
+            tools: [{ functionDeclarations: TOOLS }],
+            toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
+          },
+        });
+      } catch (error) {
+        const status = (error as { status?: number })?.status;
+        const isRetryable = status === 503 || status === 429;
+        if (!isRetryable || attempt === maxRetries) throw error;
+        const waitMs = 1000 * Math.pow(2, attempt);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+    }
+    throw new Error("No se pudo obtener respuesta de Gemini tras varios intentos.");
+  }
+
   async handleTurn(conversation: AgentConversation, store: Store, userMessage: string): Promise<string> {
     conversation.addMessage("user", userMessage);
 
@@ -84,15 +114,7 @@ export class GeminiAgentService implements IAgentService {
     // Igual que en AnthropicAgentService: máximo 5 vueltas de tool-use como
     // salvaguarda, y ejecutamos las tools contra el catálogo real.
     for (let turn = 0; turn < 5; turn++) {
-      const response = await this.ai.models.generateContent({
-        model: MODEL,
-        contents,
-        config: {
-          systemInstruction: systemPrompt(store),
-          tools: [{ functionDeclarations: TOOLS }],
-          toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
-        },
-      });
+      const response = await this.generateContentWithRetry(contents, store);
 
       const functionCalls = response.functionCalls ?? [];
       if (functionCalls.length === 0) {
