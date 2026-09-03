@@ -8,7 +8,7 @@ import { IAgentService } from "../../domain/services/IAgentService";
 // en el free tier. Los modelos "gemini-3-*-preview" exigen reenviar un
 // "thought_signature" en cada turno o la API rechaza la petición — evitamos
 // esa complejidad extra usando el modelo estable.
-const MODEL = "gemini-3-6-flash";
+const MODEL = "gemini-flash-latest";
 
 /** Mismo contrato de tools que en AnthropicAgentService, solo cambia el nombre
  *  del campo de esquema (`parametersJsonSchema` en vez de `input_schema`). */
