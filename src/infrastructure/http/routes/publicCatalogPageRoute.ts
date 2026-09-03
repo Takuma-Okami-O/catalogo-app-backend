@@ -300,6 +300,7 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
   /* ---------- Agente de ventas (chat con IA) ---------- */
   .agent-bubble { position: fixed; bottom: 20px; right: 16px; width: 56px; height: 56px; border-radius: 50%; background: var(--primary, #1a1a1a); color: #fff; border: none; font-size: 1.5rem; box-shadow: 0 8px 20px rgba(0,0,0,0.25); cursor: pointer; z-index: 250; display: flex; align-items: center; justify-content: center; transition: transform 0.2s ease; }
   .agent-bubble:active { transform: scale(0.92); }
+  .agent-bubble-badge { position: absolute; top: -4px; right: -4px; background: var(--accent-gold, #c59b27); color: #1a1a1a; font-size: 0.55rem; font-weight: 800; padding: 2px 5px; border-radius: 10px; letter-spacing: 0.3px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
   .agent-panel { position: fixed; bottom: 0; right: 0; left: 0; margin: 0 auto; max-width: 380px; width: 94%; max-height: 70vh; background: var(--card-bg); color: var(--text-main); border-radius: 18px 18px 0 0; box-shadow: 0 -12px 35px rgba(0,0,0,0.25); z-index: 260; display: flex; flex-direction: column; transform: translateY(120%); transition: transform 0.3s cubic-bezier(0.1,0.9,0.2,1); }
   .agent-panel.open { transform: translateY(0); }
   .agent-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border-color); }
@@ -312,7 +313,7 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
   .agent-msg.assistant { align-self: flex-start; background: rgba(0,0,0,0.06); border-bottom-left-radius: 4px; }
   .agent-msg.typing { align-self: flex-start; font-style: italic; color: var(--text-muted); background: none; padding: 0 4px; }
   .agent-input-row { display: flex; gap: 8px; padding: 10px 12px 14px; border-top: 1px solid var(--border-color); }
-  .agent-input-row input { flex: 1; border: 1px solid var(--border-color); border-radius: 20px; padding: 9px 14px; font-size: 0.82rem; background: transparent; color: var(--text-main); }
+  .agent-input-row input { flex: 1; border: 1px solid var(--border-color); border-radius: 20px; padding: 9px 14px; font-size: 0.82rem; background: var(--card-bg); color: var(--text-main); -webkit-appearance: none; appearance: none; }
   .agent-input-row button { background: var(--primary, #1a1a1a); color: #fff; border: none; border-radius: 50%; width: 38px; height: 38px; font-size: 0.9rem; cursor: pointer; flex-shrink: 0; }
   .cart-modal { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card-bg); color: var(--text-main); border-top-left-radius: 24px; border-top-right-radius: 24px; box-shadow: 0 -15px 40px rgba(0,0,0,0.15); z-index: 300; max-height: 80vh; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.1,0.9,0.2,1); }
   .cart-modal.open { transform: translateY(0); }
@@ -484,7 +485,9 @@ ${renderSantaSleigh(theme)}
     </div>
   </div>
 
-  <button class="agent-bubble" id="agentBubble" onclick="alternarPanelAgente()" aria-label="Chatear con el asistente">💬</button>
+ <button class="agent-bubble" id="agentBubble" onclick="alternarPanelAgente()" aria-label="Chatear con el asistente de IA">
+    🤖<span class="agent-bubble-badge">IA</span>
+  </button>
 
   <div class="agent-panel" id="agentPanel">
     <div class="agent-panel-header">
