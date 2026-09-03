@@ -2,7 +2,7 @@ import { Router } from "express";
 import { IStoreRepository, IProductRepository } from "../../../domain/repositories/ICatalogRepositories";
 import { IAgentConversationRepository } from "../../../domain/repositories/IAgentConversationRepository";
 import { ChatWithAgentUseCase } from "../../../application/use-cases/ChatWithAgentUseCase";
-import { AnthropicAgentService } from "../../services/AnthropicAgentService";
+import { GeminiAgentService } from "../../services/GeminiAgentService";
 
 /**
  * Rutas públicas del agente de ventas: las usa el comprador desde el
@@ -13,7 +13,7 @@ import { AnthropicAgentService } from "../../services/AnthropicAgentService";
  */
 export function buildAgentRoutes(storeRepository: IStoreRepository, productRepository: IProductRepository, conversationRepository: IAgentConversationRepository) {
   const router = Router();
-  const agentService = new AnthropicAgentService(productRepository);
+  const agentService = new GeminiAgentService(productRepository);
   const chatWithAgentUseCase = new ChatWithAgentUseCase(storeRepository, conversationRepository, agentService);
 
   router.post("/catalogo/:slug/agente/chat", async (req, res, next) => {
