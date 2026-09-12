@@ -250,6 +250,7 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
   .header-content { max-width: 600px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
   .brand-info { display: flex; align-items: center; gap: 12px; }
   .logo-container { width: 48px; height: 48px; border-radius: 50%; overflow: hidden; border: 1px solid var(--accent-gold); box-shadow: 0 4px 12px rgba(197,155,39,0.2); background: #f2efe9; }
+  .logo-container.clickable { cursor: zoom-in; }
   .logo-container img { width: 100%; height: 100%; object-fit: cover; }
   .brand-title { font-size: 1rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-main); display: flex; align-items: center; gap: 5px; }
   .verified-badge { color: #2dd4bf; font-size: 0.85em; }
@@ -297,9 +298,13 @@ function renderCatalogPage(store: StoreView, products: ProductView[], slug: stri
   .cart-info { font-size: 0.8rem; font-weight: 500; display: flex; align-items: center; gap: 8px; }
   .cart-total { color: #f4d35e; font-weight: 700; font-size: 1rem; }
   .cart-action-hint { font-size: 0.75rem; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 20px; font-weight: 600; }
-   .agent-bubble { position: fixed; bottom: 20px; right: 16px; width: 56px; height: 56px; border-radius: 50%; background: #1c1c1e; color: #fff; border: none; font-size: 1.5rem; box-shadow: 0 8px 20px rgba(0,0,0,0.35); cursor: pointer; z-index: 250; display: flex; align-items: center; justify-content: center; transition: transform 0.2s ease; }
+   .agent-bubble { position: fixed; bottom: 20px; right: 16px; width: 56px; height: 56px; border-radius: 50%; background: #1c1c1e; color: #fff; border: none; font-size: 1.5rem; box-shadow: 0 8px 20px rgba(0,0,0,0.35); cursor: pointer; z-index: 250; display: flex; align-items: center; justify-content: center; transition: transform 0.2s ease, bottom 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
   .agent-bubble-badge { position: absolute; top: -4px; right: -4px; background: #ffd60a; color: #1a1a1a; font-size: 0.55rem; font-weight: 800; padding: 2px 5px; border-radius: 10px; letter-spacing: 0.3px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
   .agent-bubble:active { transform: scale(0.92); }
+  /* Cuando el carrito está visible (hay productos añadidos), la burbuja del
+     chat sube para no quedar encima de la barra del carrito -- antes las
+     dos vivían en el mismo bottom:20px/right:16px y chocaban. */
+  .cart-bar.visible ~ .agent-bubble { bottom: 92px; }
   .agent-panel { position: fixed; bottom: 0; right: 0; left: 0; margin: 0 auto; max-width: 380px; width: 94%; max-height: 70vh; background: #1c1c1e; color: #f5f5f5; border-radius: 18px 18px 0 0; box-shadow: 0 -12px 35px rgba(0,0,0,0.4); z-index: 260; display: flex; flex-direction: column; transform: translateY(120%); transition: transform 0.3s cubic-bezier(0.1,0.9,0.2,1); forced-color-adjust: none; }
   .agent-panel.open { transform: translateY(0); }
   .agent-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #2f2f31; }
@@ -403,7 +408,9 @@ ${renderSantaSleigh(theme)}
   <header>
     <div class="header-content">
       <div class="brand-info">
-        <div class="logo-container">${store.logoUrl ? `<img src="${escapeHtml(store.logoUrl)}" alt="logo">` : ""}</div>
+        <div class="logo-container${store.logoUrl ? " clickable" : ""}"${
+          store.logoUrl ? ` onclick="abrirTestimonio('${escapeJs(store.logoUrl)}')"` : ""
+        }>${store.logoUrl ? `<img src="${escapeHtml(store.logoUrl)}" alt="logo">` : ""}</div>
         <div>
           <h1 class="brand-title">${escapeHtml(store.name)}${store.isVerified ? `<span class="verified-badge" title="Tienda verificada">✔️</span>` : ""}</h1>
           <p class="brand-sub">Catálogo oficial</p>
