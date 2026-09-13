@@ -19,7 +19,6 @@ import { VerifyStoreUseCase } from "../../../application/use-cases/VerifyStoreUs
 import { UpdateStoreWhatsAppMessageUseCase } from "../../../application/use-cases/UpdateStoreWhatsAppMessageUseCase";
 import { StartFreeTrialUseCase } from "../../../application/use-cases/StartFreeTrialUseCase";
 import { UpdateStoreSettingsUseCase } from "../../../application/use-cases/UpdateStoreSettingsUseCase";
-import { RecordStoreVisitUseCase } from "../../../application/use-cases/RecordStoreVisitUseCase";
 import { GetStoreStatsUseCase } from "../../../application/use-cases/GetStoreStatsUseCase";
 import { ChangeStoreTemplateUseCase } from "../../../application/use-cases/ChangeStoreTemplateUseCase";
 import { AddTestimonialUseCase, RemoveTestimonialUseCase } from "../../../application/use-cases/TestimonialUseCases";
@@ -72,7 +71,6 @@ export function buildCatalogRoutes(tokenService: ITokenService, repos: CatalogRe
   const updateStoreWhatsAppMessageUseCase = new UpdateStoreWhatsAppMessageUseCase(storeRepository);
   const startFreeTrialUseCase = new StartFreeTrialUseCase(storeRepository);
   const updateStoreSettingsUseCase = new UpdateStoreSettingsUseCase(storeRepository);
-  const recordStoreVisitUseCase = new RecordStoreVisitUseCase(visitRepository);
   const getStoreStatsUseCase = new GetStoreStatsUseCase(storeRepository, visitRepository, orderRepository);
   const changeStoreTemplateUseCase = new ChangeStoreTemplateUseCase(storeRepository);
   const addTestimonialUseCase = new AddTestimonialUseCase(storeRepository);

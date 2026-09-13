@@ -1,0 +1,9 @@
+﻿
+src\application\use-cases\RecordStoreVisitUseCase.ts:3:export class RecordStoreVisitUseCase {
+src\infrastructure\http\routes\catalogRoutes.ts:22:import { RecordStoreVisitUseCase } from "../../../application/use-cases/RecordStoreVisitUseCase";
+src\infrastructure\http\routes\catalogRoutes.ts:75:  const recordStoreVisitUseCase = new RecordStoreVisitUseCase(visitRepository);
+src\infrastructure\http\routes\publicCatalogPageRoute.ts:4:import { RecordStoreVisitUseCase } from "../../../application/use-cases/RecordStoreVisitUseCase";
+src\infrastructure\http\routes\publicCatalogPageRoute.ts:14:  const recordStoreVisitUseCase = new RecordStoreVisitUseCase(visitRepository);
+src\infrastructure\http\routes\publicCatalogPageRoute.ts:24:      recordStoreVisitUseCase.execute(store.id).catch(() => {});
+
+
